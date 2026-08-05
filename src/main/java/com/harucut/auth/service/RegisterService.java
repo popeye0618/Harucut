@@ -1,10 +1,10 @@
-package com.harucut.user.service;
+package com.harucut.auth.service;
 
 import com.harucut.common.exception.BusinessException;
-import com.harucut.user.dto.RegisterRequest;
+import com.harucut.auth.dto.RegisterRequest;
 import com.harucut.user.entity.User;
 import com.harucut.user.enums.Provider;
-import com.harucut.user.exception.AuthErrorCode;
+import com.harucut.auth.exception.AuthErrorCode;
 import com.harucut.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;

@@ -1,18 +1,18 @@
 package com.harucut.user.service;
 
+import com.harucut.auth.service.RegisterService;
 import com.harucut.common.exception.BusinessException;
-import com.harucut.user.dto.RegisterRequest;
+import com.harucut.auth.dto.RegisterRequest;
 import com.harucut.user.entity.User;
 import com.harucut.user.enums.Provider;
 import com.harucut.user.enums.UserRole;
 import com.harucut.user.enums.UserStatus;
-import com.harucut.user.exception.AuthErrorCode;
+import com.harucut.auth.exception.AuthErrorCode;
 import com.harucut.user.repository.UserRepository;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.BDDMockito;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;

@@ -1,4 +1,4 @@
-package com.harucut.user.exception;
+package com.harucut.auth.exception;
 
 import com.harucut.common.exception.ErrorCode;
 import lombok.Getter;

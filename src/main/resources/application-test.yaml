@@ -6,3 +6,6 @@ spring:
   jpa:
     hibernate:
       ddl-auto: create-drop
+
+jwt:
+  secret: local-dev-secret-key-must-be-at-least-256-bits-for-hs256-algorithm-x

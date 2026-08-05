@@ -1,8 +1,8 @@
-package com.harucut.user.controller;
+package com.harucut.auth.controller;
 
 import com.harucut.common.response.Response;
-import com.harucut.user.dto.RegisterRequest;
-import com.harucut.user.service.RegisterService;
+import com.harucut.auth.dto.RegisterRequest;
+import com.harucut.auth.service.RegisterService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;

@@ -1,9 +1,9 @@
 package com.harucut.user.controller;
 
+import com.harucut.auth.controller.AuthController;
 import com.harucut.config.SecurityConfig;
-import com.harucut.user.dto.RegisterRequest;
-import com.harucut.user.service.RegisterService;
-import org.assertj.core.api.Assertions;
+import com.harucut.auth.dto.RegisterRequest;
+import com.harucut.auth.service.RegisterService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
