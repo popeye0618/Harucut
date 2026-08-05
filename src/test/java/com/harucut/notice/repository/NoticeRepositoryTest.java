@@ -1,26 +1,24 @@
 package com.harucut.notice.repository;
 
 import com.harucut.config.JpaAuditingConfig;
-import com.harucut.config.TimeConfig;
 import com.harucut.notice.entity.Notice;
-import org.assertj.core.api.Assertions;
+import com.harucut.support.FixedClockConfig;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.test.context.ActiveProfiles;
 
 import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 @DataJpaTest
-@Import({JpaAuditingConfig.class, TimeConfig.class})
+@Import({JpaAuditingConfig.class, FixedClockConfig.class})
 class NoticeRepositoryTest {
 
-    private static final LocalDateTime BASE = LocalDateTime.of(2026, 7, 22, 10, 0);
+    private static final LocalDateTime BASE = FixedClockConfig.FIXED_NOW;
     private static final PageRequest FIRST_PAGE = PageRequest.of(0, 10);
 
     @Autowired
@@ -96,6 +94,14 @@ class NoticeRepositoryTest {
         assertThat(noticeRepository.findByDeletedAtIsNullOrderByCreatedAtDesc(FIRST_PAGE).getContent())
                 .extracting(Notice::getTitle)
                 .containsExactlyInAnyOrder("초안", "게시됨");
+    }
+
+    @Test
+    @DisplayName("createdAt은 Clock 빈이 주는 시각으로 찍힌다")
+    void auditingUsesClockBean() {
+        Notice saved = noticeRepository.save(new Notice("초안", "본문", false));
+
+        assertThat(saved.getCreatedAt()).isEqualTo(FixedClockConfig.FIXED_NOW);
     }
 
     private Notice published(String title, boolean pinned, LocalDateTime publishedAt) {
