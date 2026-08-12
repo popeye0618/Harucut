@@ -8,11 +8,13 @@ import com.harucut.notice.dto.UpdateNoticeRequest;
 import com.harucut.notice.service.NoticeAdminService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/admin/notices")
+@PreAuthorize("hasRole('ADMIN')")
 public class NoticeAdminController {
 
     private final NoticeAdminService noticeAdminService;

@@ -3,6 +3,9 @@ package com.harucut.auth.controller;
 import com.harucut.auth.dto.LoginRequest;
 import com.harucut.auth.dto.LoginResult;
 import com.harucut.auth.dto.RegisterRequest;
+import com.harucut.auth.security.CustomAuthenticationEntryPoint;
+import com.harucut.auth.security.CustomUserDetailsService;
+import com.harucut.auth.service.JwtTokenService;
 import com.harucut.auth.service.LoginService;
 import com.harucut.auth.service.RegisterService;
 import com.harucut.config.SecurityConfig;
@@ -10,6 +13,7 @@ import com.harucut.user.enums.UserStatus;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mock;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -29,7 +33,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 
 @WebMvcTest(AuthController.class)
-@Import(SecurityConfig.class)
+@Import({SecurityConfig.class, CustomAuthenticationEntryPoint.class})
 class AuthControllerTest {
 
     @Autowired
@@ -40,6 +44,12 @@ class AuthControllerTest {
 
     @MockitoBean
     private LoginService loginService;
+
+    @MockitoBean
+    private JwtTokenService jwtTokenService;
+
+    @MockitoBean
+    private CustomUserDetailsService userDetailsService;
 
     @Nested
     @DisplayName("POST /api/harucut/register")
