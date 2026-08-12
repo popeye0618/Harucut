@@ -13,3 +13,8 @@ jwt:
   secret: ${JWT_SECRET_KEY}
   access-expiration: 30m
   refresh-expiration: 14d
+
+cookie:
+  domain: ${COOKIE_DOMAIN:localhost}
+  secure: ${COOKIE_SECURE:true}
+  same-site: ${COOKIE_SAME_SITE:Lax}

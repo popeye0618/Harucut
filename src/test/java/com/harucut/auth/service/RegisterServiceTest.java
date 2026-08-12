@@ -1,4 +1,4 @@
-package com.harucut.user.service;
+package com.harucut.auth.service;
 
 import com.harucut.auth.service.RegisterService;
 import com.harucut.common.exception.BusinessException;
