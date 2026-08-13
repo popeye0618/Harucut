@@ -1,0 +1,68 @@
+package com.harucut.auth.email;
+
+import com.harucut.auth.exception.AuthErrorCode;
+import com.harucut.common.exception.BusinessException;
+import com.harucut.common.mail.MailService;
+import com.harucut.user.enums.Provider;
+import com.harucut.user.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.mail.MailException;
+import org.springframework.stereotype.Service;
+import org.thymeleaf.ITemplateEngine;
+import org.thymeleaf.context.Context;
+
+@Service
+@RequiredArgsConstructor
+public class EmailVerificationService {
+
+    private static final String SUBJECT = "[Harucut] 회원가입 이메일 인증 코드입니다.";
+    private static final String TEMPLATE = "mail/verification-code";
+
+    private final VerificationCodeGenerator generator;
+    private final EmailVerificationRepository repository;
+    private final UserRepository userRepository;
+    private final MailService mailService;
+    private final ITemplateEngine templateEngine;
+
+    public void sendVerificationCode(String email) {
+        if (!repository.tryAcquireCooldown(email)) {
+            throw new BusinessException(AuthErrorCode.TOO_MANY_REQUESTS);
+        }
+
+        if (userRepository.existsByProviderAndEmail(Provider.HARUCUT, email)) {
+            throw new BusinessException(AuthErrorCode.EMAIL_ALREADY_IN_USE);
+        }
+
+        String code = generator.generate();
+        repository.saveCode(email, code);
+
+        Context context = new Context();
+        context.setVariable("code", code);
+        String html = templateEngine.process(TEMPLATE, context);
+
+        try {
+            mailService.sendHtml(email, SUBJECT, html);
+        } catch (MailException e) {
+            repository.releaseCooldown(email);
+            throw new BusinessException(AuthErrorCode.EMAIL_SEND_FAILED);
+        }
+    }
+
+    public void verifyCode(String email, String code) {
+        String stored = repository.findCode(email)
+                .orElseThrow(() -> new BusinessException(AuthErrorCode.INVALID_VERIFICATION_CODE));
+
+        if (!stored.equalsIgnoreCase(code)) {
+            throw new BusinessException(AuthErrorCode.INVALID_VERIFICATION_CODE);
+        }
+
+        repository.removeCode(email);
+        repository.markVerified(email);
+    }
+
+    public void consumeVerified(String email) {
+        if (!repository.consumeVerified(email)) {
+            throw new BusinessException(AuthErrorCode.EMAIL_NOT_VERIFIED);
+        }
+    }
+}
