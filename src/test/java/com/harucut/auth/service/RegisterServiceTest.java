@@ -1,5 +1,6 @@
 package com.harucut.auth.service;
 
+import com.harucut.auth.email.EmailVerificationService;
 import com.harucut.auth.service.RegisterService;
 import com.harucut.common.exception.BusinessException;
 import com.harucut.auth.dto.RegisterRequest;
@@ -34,13 +35,16 @@ class RegisterServiceTest {
     @Mock
     private UserRepository userRepository;
 
+    @Mock
+    private EmailVerificationService emailVerificationService;
+
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder(4);
 
     private RegisterService registerService;
 
     @BeforeEach
     void setUp() {
-        registerService = new RegisterService(userRepository, passwordEncoder);
+        registerService = new RegisterService(userRepository, passwordEncoder, emailVerificationService);
     }
 
     @Nested

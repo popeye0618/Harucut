@@ -1,5 +1,6 @@
 package com.harucut.auth.service;
 
+import com.harucut.auth.email.EmailVerificationService;
 import com.harucut.common.exception.BusinessException;
 import com.harucut.auth.dto.RegisterRequest;
 import com.harucut.user.entity.User;
@@ -18,12 +19,15 @@ public class RegisterService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final EmailVerificationService emailVerificationService;
 
     @Transactional
     public void register(RegisterRequest request) {
         if (userRepository.existsByProviderAndEmail(Provider.HARUCUT, request.email())) {
             throw new BusinessException(AuthErrorCode.EMAIL_ALREADY_IN_USE);
         }
+
+        emailVerificationService.consumeVerified(request.email());
 
         User user = User.localUser(
                 request.email(),

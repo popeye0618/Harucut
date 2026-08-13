@@ -21,6 +21,7 @@ public enum AuthErrorCode implements ErrorCode {
     EXPIRED_TOKEN("AUTH-012", HttpStatus.UNAUTHORIZED, "Expired access token."),
     USER_NOT_FOUND("AUTH-020", HttpStatus.NOT_FOUND, "User not found."),
     EMAIL_ALREADY_IN_USE("AUTH-030", HttpStatus.CONFLICT, "This email is already in use."),
+    TOO_MANY_REQUESTS("AUTH-040", HttpStatus.TOO_MANY_REQUESTS, "Too many verification requests."),
     EMAIL_SEND_FAILED("AUTH-090", HttpStatus.INTERNAL_SERVER_ERROR, "Failed to send verification email."),
     OAUTH2_UNLINK_FAILED("AUTH-091", HttpStatus.INTERNAL_SERVER_ERROR, "Failed to unlink OAuth2 provider account.");
 
