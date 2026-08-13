@@ -14,26 +14,14 @@ public class EmailVerificationRepository {
 
     private static final String CODE_PREFIX = "email:code:";
     private static final String VERIFIED_PREFIX = "email:verified:";
-    private static final String COOLDOWN_PREFIX = "email:cooldown:";
 
     private static final Duration CODE_TTL = Duration.ofMinutes(5);
     private static final Duration VERIFIED_TTL = Duration.ofMinutes(10);
-    private static final Duration COOLDOWN_TTL = Duration.ofSeconds(60);
 
     private static final String VERIFIED_VALUE = "VERIFIED";
 
     private final StringRedisTemplate redisTemplate;
 
-    public boolean tryAcquireCooldown(String email) {
-        Boolean acquired = redisTemplate.opsForValue()
-                .setIfAbsent(key(COOLDOWN_PREFIX, email), "1", COOLDOWN_TTL);
-
-        return Boolean.TRUE.equals(acquired);
-    }
-
-    public void releaseCooldown(String email) {
-        redisTemplate.delete(key(COOLDOWN_PREFIX, email));
-    }
 
     public void saveCode(String email, String code) {
         redisTemplate.opsForValue().set(key(CODE_PREFIX, email), code, CODE_TTL);

@@ -37,7 +37,6 @@ class EmailVerificationServiceTest {
 
     private static final String CODE_KEY = "email:code:" + EMAIL;
     private static final String VERIFIED_KEY = "email:verified:" + EMAIL;
-    private static final String COOLDOWN_KEY = "email:cooldown:" + EMAIL;
 
     private static final Duration CODE_TTL = Duration.ofMinutes(5);
     private static final Duration VERIFIED_TTL = Duration.ofMinutes(10);
@@ -60,6 +59,9 @@ class EmailVerificationServiceTest {
     @Mock
     private ITemplateEngine templateEngine;
 
+    @Mock
+    private EmailRateLimit emailRateLimit;
+
     private EmailVerificationService service;
 
     @BeforeEach
@@ -67,6 +69,7 @@ class EmailVerificationServiceTest {
         service = new EmailVerificationService(
                 generator,
                 new EmailVerificationRepository(redisTemplate),
+                emailRateLimit,
                 userRepository,
                 mailService,
                 templateEngine
@@ -80,20 +83,22 @@ class EmailVerificationServiceTest {
         @Test
         @DisplayName("생성한 코드를 email:code 키에 5분 TTL로 저장한다")
         void storesCodeWithTtl() {
-            givenCooldownAcquired();
+            givenCooldownAcquired(EMAIL);
+            givenValueOperations();
             given(userRepository.existsByProviderAndEmail(Provider.HARUCUT, EMAIL)).willReturn(false);
             given(generator.generate()).willReturn(CODE);
 
             service.sendVerificationCode(EMAIL);
 
             then(valueOperations).should().set(CODE_KEY, CODE, CODE_TTL);
-            then(redisTemplate).should(never()).delete(COOLDOWN_KEY);
+            then(emailRateLimit).should(never()).releaseCooldown(any());
         }
 
         @Test
         @DisplayName("렌더링한 템플릿 본문으로 메일을 발송한다")
         void sendsRenderedTemplate() {
-            givenCooldownAcquired();
+            givenCooldownAcquired(EMAIL);
+            givenValueOperations();
             given(userRepository.existsByProviderAndEmail(Provider.HARUCUT, EMAIL)).willReturn(false);
             given(templateEngine.process(eq(TEMPLATE), any(IContext.class))).willReturn(HTML);
 
@@ -103,14 +108,16 @@ class EmailVerificationServiceTest {
         }
 
         @Test
-        @DisplayName("대문자 이메일로 들어와도 키는 소문자로 만든다")
+        @DisplayName("대문자 이메일로 들어와도 email:code 키는 소문자로 만든다")
         void lowercasesKey() {
-            given(redisTemplate.opsForValue()).willReturn(valueOperations);
-            given(valueOperations.setIfAbsent(eq(COOLDOWN_KEY), any(), any(Duration.class))).willReturn(true);
-            given(userRepository.existsByProviderAndEmail(Provider.HARUCUT, "User@Harucut.com")).willReturn(false);
+            String mixedCase = "User@Harucut.com";
+
+            givenCooldownAcquired(mixedCase);
+            givenValueOperations();
+            given(userRepository.existsByProviderAndEmail(Provider.HARUCUT, mixedCase)).willReturn(false);
             given(generator.generate()).willReturn(CODE);
 
-            service.sendVerificationCode("User@Harucut.com");
+            service.sendVerificationCode(mixedCase);
 
             then(valueOperations).should().set(CODE_KEY, CODE, CODE_TTL);
         }
@@ -118,14 +125,14 @@ class EmailVerificationServiceTest {
         @Test
         @DisplayName("쿨다운 중이면 AUTH-040을 던지고 메일을 보내지 않는다")
         void rejectedWhileCooldown() {
-            given(redisTemplate.opsForValue()).willReturn(valueOperations);
-            given(valueOperations.setIfAbsent(eq(COOLDOWN_KEY), any(), any(Duration.class))).willReturn(false);
+            given(emailRateLimit.tryAcquireCooldown(EMAIL)).willReturn(false);
 
             assertThatThrownBy(() -> service.sendVerificationCode(EMAIL))
                     .isInstanceOf(BusinessException.class)
                     .extracting("errorCode")
                     .isEqualTo(AuthErrorCode.TOO_MANY_REQUESTS);
 
+            then(redisTemplate).shouldHaveNoInteractions();
             then(userRepository).shouldHaveNoInteractions();
             then(mailService).shouldHaveNoInteractions();
         }
@@ -133,7 +140,7 @@ class EmailVerificationServiceTest {
         @Test
         @DisplayName("이미 가입된 이메일이면 AUTH-030을 던지고 코드를 저장하지 않는다")
         void rejectsAlreadyRegistered() {
-            givenCooldownAcquired();
+            givenCooldownAcquired(EMAIL);
             given(userRepository.existsByProviderAndEmail(Provider.HARUCUT, EMAIL)).willReturn(true);
 
             assertThatThrownBy(() -> service.sendVerificationCode(EMAIL))
@@ -141,14 +148,15 @@ class EmailVerificationServiceTest {
                     .extracting("errorCode")
                     .isEqualTo(AuthErrorCode.EMAIL_ALREADY_IN_USE);
 
-            then(valueOperations).should(never()).set(eq(CODE_KEY), any(), any(Duration.class));
+            then(redisTemplate).shouldHaveNoInteractions();
             then(mailService).shouldHaveNoInteractions();
         }
 
         @Test
         @DisplayName("SMTP 전송이 실패하면 MailException을 AUTH-090으로 감싼다")
         void wrapsMailFailure() {
-            givenCooldownAcquired();
+            givenCooldownAcquired(EMAIL);
+            givenValueOperations();
             given(userRepository.existsByProviderAndEmail(Provider.HARUCUT, EMAIL)).willReturn(false);
             willThrow(new MailSendException("smtp down"))
                     .given(mailService).sendHtml(any(), any(), any());
@@ -162,7 +170,8 @@ class EmailVerificationServiceTest {
         @Test
         @DisplayName("SMTP 전송이 실패하면 쿨다운을 풀어 즉시 재요청을 허용한다")
         void releasesCooldownOnMailFailure() {
-            givenCooldownAcquired();
+            givenCooldownAcquired(EMAIL);
+            givenValueOperations();
             given(userRepository.existsByProviderAndEmail(Provider.HARUCUT, EMAIL)).willReturn(false);
             willThrow(new MailSendException("smtp down"))
                     .given(mailService).sendHtml(any(), any(), any());
@@ -172,7 +181,7 @@ class EmailVerificationServiceTest {
                     .extracting("errorCode")
                     .isEqualTo(AuthErrorCode.EMAIL_SEND_FAILED);
 
-            then(redisTemplate).should().delete(COOLDOWN_KEY);
+            then(emailRateLimit).should().releaseCooldown(EMAIL);
         }
     }
 
@@ -257,8 +266,11 @@ class EmailVerificationServiceTest {
         }
     }
 
-    private void givenCooldownAcquired() {
+    private void givenCooldownAcquired(String email) {
+        given(emailRateLimit.tryAcquireCooldown(email)).willReturn(true);
+    }
+
+    private void givenValueOperations() {
         given(redisTemplate.opsForValue()).willReturn(valueOperations);
-        given(valueOperations.setIfAbsent(eq(COOLDOWN_KEY), any(), any(Duration.class))).willReturn(true);
     }
 }

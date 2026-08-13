@@ -80,4 +80,8 @@ public class User extends BaseEntity {
     public static User localUser(String email, String encodedPassword, String username) {
         return new User(Provider.HARUCUT, null, email, encodedPassword, username);
     }
+
+    public void changePassword(String encodedPassword) {
+        this.password = encodedPassword;
+    }
 }

@@ -9,14 +9,12 @@ import com.harucut.auth.jwt.JwtProperties;
 import com.harucut.auth.jwt.TokenType;
 import com.harucut.common.exception.BusinessException;
 import com.harucut.support.FixedClockConfig;
-import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.BDDMockito;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.RedisConnectionFailureException;
@@ -144,25 +142,25 @@ class RefreshTokenServiceTest {
     }
 
     @Nested
-    @DisplayName("logout")
-    class Logout {
+    @DisplayName("revoke")
+    class revoke {
 
         @Test
         @DisplayName("키를 지운다")
         void deletesKey() {
-            refreshTokenService.logout(PUBLIC_ID);
+            refreshTokenService.revoke(PUBLIC_ID);
 
             then(redisTemplate).should().delete(KEY);
         }
 
         @Test
-        @DisplayName("Redis가 죽어도 예외를 삼킨다")
-        void survivesRedisFailure() {
+        @DisplayName("Redis 삭제가 실패하면 예외를 그대로 던진다")
+        void propagatesRedisFailure() {
             given(redisTemplate.delete(KEY))
                     .willThrow(new RedisConnectionFailureException("down"));
 
-            assertThatCode(() -> refreshTokenService.logout(PUBLIC_ID))
-                    .doesNotThrowAnyException();
+            assertThatThrownBy(() -> refreshTokenService.revoke(PUBLIC_ID))
+                    .isInstanceOf(RedisConnectionFailureException.class);
         }
     }
 

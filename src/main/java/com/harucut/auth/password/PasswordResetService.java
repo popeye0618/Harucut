@@ -1,31 +1,41 @@
-package com.harucut.auth.email;
+package com.harucut.auth.password;
 
+import com.harucut.auth.email.EmailRateLimit;
+import com.harucut.auth.email.VerificationCodeGenerator;
 import com.harucut.auth.exception.AuthErrorCode;
+import com.harucut.auth.service.RefreshTokenService;
 import com.harucut.common.exception.BusinessException;
 import com.harucut.common.mail.MailService;
+import com.harucut.user.entity.User;
 import com.harucut.user.enums.Provider;
 import com.harucut.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.mail.MailException;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.thymeleaf.ITemplateEngine;
 import org.thymeleaf.context.Context;
 
+import java.util.UUID;
+
 @Service
 @RequiredArgsConstructor
-public class EmailVerificationService {
+public class PasswordResetService {
 
-    private static final String SUBJECT = "[Harucut] 회원가입 이메일 인증 코드입니다.";
-    private static final String TEMPLATE = "mail/verification-code";
+    private static final String SUBJECT = "[Harucut] 비밀번호 재설정 코드입니다.";
+    private static final String TEMPLATE = "mail/password-reset-code";
 
     private final VerificationCodeGenerator generator;
-    private final EmailVerificationRepository repository;
+    private final PasswordResetRepository repository;
     private final EmailRateLimit emailRateLimit;
     private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final RefreshTokenService refreshTokenService;
     private final MailService mailService;
     private final ITemplateEngine templateEngine;
 
-    public void sendVerificationCode(String email) {
+    public void sendResetCode(String email) {
         if (!emailRateLimit.tryAcquireCooldown(email)) {
             throw new BusinessException(AuthErrorCode.TOO_MANY_REQUESTS);
         }
@@ -49,7 +59,7 @@ public class EmailVerificationService {
         }
     }
 
-    public void verifyCode(String email, String code) {
+    public String verifyResetCode(String email, String code) {
         String stored = repository.findCode(email)
                 .orElseThrow(() -> new BusinessException(AuthErrorCode.INVALID_VERIFICATION_CODE));
 
@@ -58,12 +68,22 @@ public class EmailVerificationService {
         }
 
         repository.removeCode(email);
-        repository.markVerified(email);
+
+        String resetToken = UUID.randomUUID().toString();
+        repository.saveToken(resetToken, email);
+
+        return resetToken;
     }
 
-    public void consumeVerified(String email) {
-        if (!repository.consumeVerified(email)) {
-            throw new BusinessException(AuthErrorCode.EMAIL_NOT_VERIFIED);
-        }
+    @Transactional
+    public void resetPassword(String resetToken, String newPassword) {
+        String email = repository.consumeToken(resetToken)
+                .orElseThrow(() -> new BusinessException(AuthErrorCode.INVALID_TOKEN));
+
+        User user = userRepository.findByProviderAndEmail(Provider.HARUCUT, email)
+                .orElseThrow(() -> new BusinessException(AuthErrorCode.USER_NOT_FOUND));
+
+        refreshTokenService.revoke(user.getPublicId());
+        user.changePassword(passwordEncoder.encode(newPassword));
     }
 }

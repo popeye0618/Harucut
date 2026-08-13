@@ -47,12 +47,8 @@ public class RefreshTokenService {
         );
     }
 
-    public void logout(String publicId) {
-        try {
-            redisTemplate.delete(KEY_PREFIX + publicId);
-        } catch (RuntimeException e) {
-            log.warn("[logout] Redis 삭제 실패. TTL로 정리. publicId={}", publicId, e);
-        }
+    public void revoke(String publicId) {
+        redisTemplate.delete(KEY_PREFIX + publicId);
     }
 
     private void verifyStored(String publicId, String refreshToken) {

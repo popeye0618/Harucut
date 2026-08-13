@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
@@ -35,8 +36,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.BDDMockito.given;
-import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.*;
 
 @WebMvcTest(TokenController.class)
 @Import({SecurityConfig.class, CustomAuthenticationEntryPoint.class,
@@ -130,7 +130,7 @@ class TokenControllerTest {
                     .exchange();
 
             assertThat(result).hasStatusOk();
-            then(refreshTokenService).should().logout(user.getPublicId());
+            then(refreshTokenService).should().revoke(user.getPublicId());
             assertExpiredCookies(result);
         }
 
@@ -143,7 +143,7 @@ class TokenControllerTest {
                     .cookie(cookie(CookieManager.REFRESH_TOKEN, refresh)))
                     .hasStatusOk();
 
-            then(refreshTokenService).should().logout("public-id-42");
+            then(refreshTokenService).should().revoke("public-id-42");
         }
 
         @Test
@@ -168,6 +168,21 @@ class TokenControllerTest {
 
             assertThat(result).hasStatusOk();
             then(refreshTokenService).shouldHaveNoInteractions();
+            assertExpiredCookies(result);
+        }
+
+        @Test
+        @DisplayName("Redis 삭제가 실패해도 200과 만료 쿠키를 준다")
+        void survivesRedisFailure() {
+            String refresh = jwtTokenService.createRefreshToken("public-id-42").value();
+            willThrow(new RedisConnectionFailureException("down"))
+                    .given(refreshTokenService).revoke("public-id-42");
+
+            MvcTestResult result = mockMvc.delete().uri(LOGOUT_URI)
+                    .cookie(cookie(CookieManager.REFRESH_TOKEN, refresh))
+                    .exchange();
+
+            assertThat(result).hasStatusOk();
             assertExpiredCookies(result);
         }
     }

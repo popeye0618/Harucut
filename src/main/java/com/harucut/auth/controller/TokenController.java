@@ -9,6 +9,7 @@ import com.harucut.auth.service.JwtTokenService;
 import com.harucut.auth.service.RefreshTokenService;
 import com.harucut.common.response.Response;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.Optional;
 
+@Slf4j
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/harucut")
@@ -43,12 +45,20 @@ public class TokenController {
             @AuthenticationPrincipal CustomUserPrincipal principal,
             @CookieValue(value = CookieManager.REFRESH_TOKEN, required = false) String refreshToken
     ) {
-        resolvePublicId(principal, refreshToken).ifPresent(refreshTokenService::logout);
+        resolvePublicId(principal, refreshToken).ifPresent(this::revokeQuietly);
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, expired(CookieManager.ACCESS_TOKEN))
                 .header(HttpHeaders.SET_COOKIE, expired(CookieManager.REFRESH_TOKEN))
                 .body(Response.ok());
+    }
+
+    private void revokeQuietly(String publicId) {
+        try {
+            refreshTokenService.revoke(publicId);
+        } catch (RuntimeException e) {
+            log.warn("[logout] refresh 토큰 삭제 실패. TTL로 정리. publicId={}", publicId, e);
+        }
     }
 
     private Optional<String> resolvePublicId(CustomUserPrincipal principal, String refreshToken) {
