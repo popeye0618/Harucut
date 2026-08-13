@@ -31,6 +31,10 @@ public class EmailVerificationRepository {
         return Boolean.TRUE.equals(acquired);
     }
 
+    public void releaseCooldown(String email) {
+        redisTemplate.delete(key(COOLDOWN_PREFIX, email));
+    }
+
     public void saveCode(String email, String code) {
         redisTemplate.opsForValue().set(key(CODE_PREFIX, email), code, CODE_TTL);
     }

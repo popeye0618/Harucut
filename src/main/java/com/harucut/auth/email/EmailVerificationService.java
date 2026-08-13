@@ -43,6 +43,7 @@ public class EmailVerificationService {
         try {
             mailService.sendHtml(email, SUBJECT, html);
         } catch (MailException e) {
+            repository.releaseCooldown(email);
             throw new BusinessException(AuthErrorCode.EMAIL_SEND_FAILED);
         }
     }
