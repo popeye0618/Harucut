@@ -17,10 +17,14 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.OrRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import java.util.Arrays;
 import java.util.List;
 
 @Configuration
@@ -38,6 +42,7 @@ public class SecurityConfig {
             "/api/harucut/reset/password",
             "/api/harucut/reset/password/verification",
             "/api/email-auth/**",
+            "/api/notices/**",
             "/oauth2/**",
             "/login/oauth2/**",
             "/api/oauth2/unlink/naver",
@@ -46,6 +51,11 @@ public class SecurityConfig {
             "/swagger-ui/**",
             "/v3/api-docs/**"
     };
+
+    private static final RequestMatcher PUBLIC_MATCHER = new OrRequestMatcher(
+            Arrays.stream(PUBLIC_PATHS)
+                    .map(PathPatternRequestMatcher::pathPattern)
+                    .toArray(RequestMatcher[]::new));
 
     private final JwtTokenService jwtTokenService;
     private final CustomUserDetailsService userDetailsService;
@@ -67,13 +77,12 @@ public class SecurityConfig {
                         handling.authenticationEntryPoint(authenticationEntryPoint))
 
                 .addFilterBefore(
-                        new JwtAuthenticationFilter(jwtTokenService, userDetailsService, authenticationEntryPoint),
+                        new JwtAuthenticationFilter(PUBLIC_MATCHER, jwtTokenService, userDetailsService, authenticationEntryPoint),
                         UsernamePasswordAuthenticationFilter.class
                 )
 
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(PUBLIC_PATHS).permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/notices/**").permitAll()
                         .anyRequest().authenticated()
                 );
 

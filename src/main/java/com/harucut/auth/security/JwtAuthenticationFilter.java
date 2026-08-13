@@ -18,6 +18,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -29,6 +30,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private static final String BEARER_PREFIX = "Bearer ";
 
+    private final RequestMatcher publicPaths;
     private final JwtTokenService jwtTokenService;
     private final CustomUserDetailsService userDetailsService;
     private final CustomAuthenticationEntryPoint authenticationEntryPoint;
@@ -42,10 +44,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             try {
                 authenticate(token, request);
             } catch (BusinessException e) {
-                reject(request, response, new CustomAuthenticationException(e.getErrorCode()));
+                reject(request, response, new CustomAuthenticationException(e.getErrorCode()), filterChain);
                 return;
             } catch (CustomAuthenticationException e) {
-                reject(request, response, e);
+                reject(request, response, e, filterChain);
                 return;
             }
         }
@@ -70,8 +72,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         SecurityContextHolder.setContext(context);
     }
 
-    private void reject(HttpServletRequest request, HttpServletResponse response, CustomAuthenticationException e) throws IOException {
+    private void reject(HttpServletRequest request, HttpServletResponse response, CustomAuthenticationException e, FilterChain chain) throws IOException, ServletException {
         SecurityContextHolder.clearContext();
+
+        if(publicPaths.matches(request)) {
+            chain.doFilter(request, response);
+            return;
+        }
+
         authenticationEntryPoint.commence(request, response, e);
     }
 

@@ -23,12 +23,14 @@ public class LoginService {
     private final AuthenticationManager authenticationManager;
     private final JwtTokenService jwtTokenService;
     private final CookieManager cookieManager;
+    private final RefreshTokenService refreshTokenService;
 
     public LoginResult login(LoginRequest request) {
         CustomUserPrincipal principal = authenticate(request);
 
         IssuedToken accessToken = jwtTokenService.createAccessToken(principal.getPublicId());
         IssuedToken refreshToken = jwtTokenService.createRefreshToken(principal.getPublicId());
+        refreshTokenService.save(principal.getPublicId(), refreshToken);
 
         return new LoginResult(
                 cookieManager.createTokenCookie(CookieManager.ACCESS_TOKEN, accessToken),

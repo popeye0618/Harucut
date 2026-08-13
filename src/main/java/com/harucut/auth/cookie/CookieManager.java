@@ -14,14 +14,24 @@ public class CookieManager {
 
     private final CookieProperties properties;
 
+    public ResponseCookie createExpiredCookie(String name) {
+        return base(name, "")
+                .maxAge(0)
+                .build();
+    }
+
     public ResponseCookie createTokenCookie(String name, IssuedToken token) {
-        return ResponseCookie.from(name, token.value())
+        return base(name, token.value())
+                .maxAge(token.ttl())
+                .build();
+    }
+
+    private ResponseCookie.ResponseCookieBuilder base(String name, String value) {
+        return ResponseCookie.from(name, value)
                 .httpOnly(true)
                 .secure(properties.secure())
                 .path("/")
-                .maxAge(token.ttl())
                 .sameSite(properties.sameSite())
-                .domain(properties.domain())
-                .build();
+                .domain(properties.domain());
     }
 }

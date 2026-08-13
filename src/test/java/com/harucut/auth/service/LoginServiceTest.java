@@ -5,6 +5,7 @@ import com.harucut.auth.cookie.CookieProperties;
 import com.harucut.auth.dto.LoginRequest;
 import com.harucut.auth.dto.LoginResult;
 import com.harucut.auth.exception.AuthErrorCode;
+import com.harucut.auth.jwt.IssuedToken;
 import com.harucut.auth.jwt.JwtProperties;
 import com.harucut.auth.jwt.TokenType;
 import com.harucut.auth.security.CustomUserDetailsService;
@@ -16,12 +17,12 @@ import com.harucut.user.enums.Provider;
 import com.harucut.user.enums.UserRole;
 import com.harucut.user.enums.UserStatus;
 import com.harucut.user.repository.UserRepository;
-import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -39,7 +40,9 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 
 @ExtendWith(MockitoExtension.class)
 class LoginServiceTest {
@@ -57,13 +60,17 @@ class LoginServiceTest {
     private JwtTokenService jwtTokenService;
     private LoginService loginService;
 
+    @Mock
+    private RefreshTokenService refreshTokenService;
+
     @BeforeEach
     void setUp() {
         jwtTokenService = jwtTokenService();
         loginService = new LoginService(
                 authenticationManager(new CustomUserDetailsService(userRepository)),
                 jwtTokenService,
-                cookieManager()
+                cookieManager(),
+                refreshTokenService
         );
     }
 
@@ -107,6 +114,19 @@ class LoginServiceTest {
 
             assertThat(result.userStatus()).isEqualTo(UserStatus.BLOCKED);
         }
+
+        @Test
+        @DisplayName("발급한 refresh를 Redis에 저장하고, 쿠키로 내려준 값과 같다")
+        void savesRefreshToken() {
+            User user = givenLocalUser(UserStatus.ACTIVE);
+
+            LoginResult result = loginService.login(new LoginRequest(EMAIL, RAW_PASSWORD));
+
+            ArgumentCaptor<IssuedToken> saved = ArgumentCaptor.forClass(IssuedToken.class);
+            then(refreshTokenService).should().save(eq(user.getPublicId()), saved.capture());
+
+            assertThat(saved.getValue().value()).isEqualTo(result.refreshTokenCookie().getValue());
+        }
     }
 
     @Nested
@@ -143,7 +163,9 @@ class LoginServiceTest {
                     authenticationManager(email -> {
                         throw new UsernameNotFoundException(email);
                     }),
-                    jwtTokenService, cookieManager());
+                    jwtTokenService, cookieManager(),
+                    refreshTokenService
+            );
 
             assertThatThrownBy(() -> service.login(new LoginRequest(EMAIL, RAW_PASSWORD)))
                     .isInstanceOf(BusinessException.class)
@@ -158,7 +180,9 @@ class LoginServiceTest {
                     authenticationManager(email -> {
                         throw new LockedException(email);
                     }),
-                    jwtTokenService, cookieManager());
+                    jwtTokenService, cookieManager(),
+                    refreshTokenService
+            );
 
             assertThatThrownBy(() -> service.login(new LoginRequest(EMAIL, RAW_PASSWORD)))
                     .isInstanceOf(BusinessException.class)

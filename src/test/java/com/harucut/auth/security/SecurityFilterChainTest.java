@@ -217,6 +217,13 @@ class SecurityFilterChainTest {
         void noTokenPasses() {
             assertThat(mockMvc.get().uri(PUBLIC_URI)).hasStatusOk();
         }
+
+        @Test
+        @DisplayName("만료 토큰이 붙어 있어도 401이 아니라 200을 받는다")
+        void ignoresExpiredToken() {
+            assertThat(mockMvc.get().uri(PUBLIC_URI).cookie(accessCookie(expiredAccessToken())))
+                    .hasStatusOk();
+        }
     }
 
     private User activeUser() {

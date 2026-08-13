@@ -37,4 +37,23 @@ class CookieManagerTest {
 
         assertThat(cookie.isSecure()).isFalse();
     }
+
+    @Test
+    @DisplayName("만료 쿠키는 maxAge만 0이고 나머지 속성은 토큰 쿠키와 같다")
+    void expiredCookieMatchesTokenCookieAttributes() {
+        CookieManager manager = new CookieManager(new CookieProperties("harucut.com", true, "Lax"));
+
+        ResponseCookie token = manager.createTokenCookie(CookieManager.REFRESH_TOKEN, TOKEN);
+        ResponseCookie expired = manager.createExpiredCookie(CookieManager.REFRESH_TOKEN);
+
+        assertThat(expired.getMaxAge()).isEqualTo(Duration.ZERO);
+        assertThat(expired.getValue()).isEmpty();
+
+        assertThat(expired.getName()).isEqualTo(token.getName());
+        assertThat(expired.getDomain()).isEqualTo(token.getDomain());
+        assertThat(expired.getPath()).isEqualTo(token.getPath());
+        assertThat(expired.getSameSite()).isEqualTo(token.getSameSite());
+        assertThat(expired.isSecure()).isEqualTo(token.isSecure());
+        assertThat(expired.isHttpOnly()).isEqualTo(token.isHttpOnly());
+    }
 }
