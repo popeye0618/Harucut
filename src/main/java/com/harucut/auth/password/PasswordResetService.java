@@ -40,8 +40,8 @@ public class PasswordResetService {
             throw new BusinessException(AuthErrorCode.TOO_MANY_REQUESTS);
         }
 
-        if (userRepository.existsByProviderAndEmail(Provider.HARUCUT, email)) {
-            throw new BusinessException(AuthErrorCode.EMAIL_ALREADY_IN_USE);
+        if (!userRepository.existsByProviderAndEmail(Provider.HARUCUT, email)) {
+            throw new BusinessException(AuthErrorCode.USER_NOT_FOUND);
         }
 
         String code = generator.generate();
