@@ -10,6 +10,7 @@ import com.harucut.notice.controller.NoticeController;
 import com.harucut.notice.service.NoticeAdminService;
 import com.harucut.notice.service.NoticeService;
 import com.harucut.support.FixedClockConfig;
+import com.harucut.support.SecurityBeansMockSupport;
 import com.harucut.support.UserFixtures;
 import com.harucut.user.entity.User;
 import com.harucut.user.enums.UserRole;
@@ -26,6 +27,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
+import org.springframework.test.web.servlet.assertj.MvcTestResult;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -39,7 +41,7 @@ import static org.mockito.BDDMockito.given;
         JwtTokenService.class, FixedClockConfig.class})
 @ActiveProfiles("test")
 @DisplayName("보안 필터 체인")
-class SecurityFilterChainTest {
+class SecurityFilterChainTest extends SecurityBeansMockSupport {
 
     private static final String PROTECTED_URI = "/api/auth/status";
     private static final String ADMIN_URI = "/api/admin/notices";
@@ -278,6 +280,71 @@ class SecurityFilterChainTest {
                     .hasStatus(HttpStatus.METHOD_NOT_ALLOWED)
                     .bodyJson()
                     .hasPathSatisfying("$.code", c -> assertThat(c).isEqualTo("GEN-041"));
+        }
+    }
+
+    /*
+     * oauth2Login 이 필터 체인에 실제로 꽂혔는지를 본다.
+     * 제공자별 매핑·핸들러가 다 맞아도 SecurityConfig 연결이 빠지면 여기서 404 가 나고,
+     * 단위 테스트는 전부 초록불인 채 로그인만 안 된다.
+     */
+    @Nested
+    @DisplayName("소셜 로그인 진입점")
+    class OAuth2Login {
+
+        @Test
+        @DisplayName("구글 인가 요청은 구글로 302 리다이렉트된다")
+        void googleRedirectsToProvider() {
+            assertThat(authorizationRedirect("google"))
+                    .startsWith("https://accounts.google.com/o/oauth2/v2/auth");
+        }
+
+        @Test
+        @DisplayName("인가 요청은 토큰 없이도 통과한다")
+        void isPublic() {
+            assertThat(mockMvc.get().uri("/oauth2/authorization/naver"))
+                    .hasStatus(HttpStatus.FOUND);
+        }
+
+        /*
+         * OIDC(구글·카카오)는 nonce 를 싣고 OAuth2(네이버)는 싣지 않는다.
+         * scope 에서 openid 가 빠지면 nonce 도 사라지므로, 설정이 뒤집히면 여기서 잡힌다.
+         */
+        @Test
+        @DisplayName("OIDC 제공자만 nonce를 싣는다")
+        void nonceOnlyForOidc() {
+            assertThat(authorizationRedirect("google")).contains("nonce=");
+            assertThat(authorizationRedirect("kakao")).contains("nonce=");
+            assertThat(authorizationRedirect("naver")).doesNotContain("nonce=");
+        }
+
+        /*
+         * redirect_uri 는 제공자 콘솔에 등록한 값과 한 글자도 다르면 안 된다.
+         */
+        @Test
+        @DisplayName("콜백 주소는 /login/oauth2/code/{제공자}다")
+        void redirectUriMatchesCallbackPath() {
+            assertThat(authorizationRedirect("google"))
+                    .contains("redirect_uri=http://localhost/login/oauth2/code/google");
+        }
+
+        /*
+         * Spring 이 InvalidClientRegistrationIdException 을 던져 500(GEN-091)이 된다.
+         * 여기서 고정하려는 것은 상태 코드가 아니라 "아무 데로도 보내지 않는다"는 것이다.
+         */
+        @Test
+        @DisplayName("등록되지 않은 제공자는 어디로도 리다이렉트하지 않는다")
+        void unknownProvider() {
+            MvcTestResult result = mockMvc.get().uri("/oauth2/authorization/line").exchange();
+
+            assertThat(result.getResponse().getRedirectedUrl()).isNull();
+        }
+
+        private String authorizationRedirect(String registrationId) {
+            MvcTestResult result = mockMvc.get().uri("/oauth2/authorization/" + registrationId).exchange();
+
+            assertThat(result).hasStatus(HttpStatus.FOUND);
+            return result.getResponse().getRedirectedUrl();
         }
     }
 

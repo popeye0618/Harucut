@@ -8,6 +8,7 @@ import com.harucut.auth.security.CustomAuthenticationEntryPoint;
 import com.harucut.auth.service.JwtTokenService;
 import com.harucut.config.SecurityConfig;
 import com.harucut.support.FixedClockConfig;
+import com.harucut.support.SecurityBeansMockSupport;
 import com.harucut.support.UserFixtures;
 import com.harucut.user.entity.User;
 import com.harucut.user.enums.UserRole;
@@ -36,7 +37,7 @@ import static org.mockito.BDDMockito.then;
 @Import({SecurityConfig.class, CustomAuthenticationEntryPoint.class, CustomAccessDeniedHandler.class,
         JwtTokenService.class, FixedClockConfig.class})
 @ActiveProfiles("test")
-class PasswordControllerTest {
+class PasswordControllerTest extends SecurityBeansMockSupport {
 
     private static final String CODE_URI = "/api/harucut/reset/password/code";
     private static final String VERIFY_URI = "/api/harucut/reset/password/verification";

@@ -9,6 +9,7 @@ import com.harucut.auth.service.JwtTokenService;
 import com.harucut.auth.service.RefreshTokenService;
 import com.harucut.config.SecurityConfig;
 import com.harucut.support.FixedClockConfig;
+import com.harucut.support.SecurityBeansMockSupport;
 import com.harucut.support.UserFixtures;
 import com.harucut.user.entity.User;
 import com.harucut.user.enums.UserRole;
@@ -41,7 +42,7 @@ import static org.mockito.BDDMockito.*;
 @Import({SecurityConfig.class, CustomAuthenticationEntryPoint.class, CustomAccessDeniedHandler.class,
         JwtTokenService.class, CookieManager.class, FixedClockConfig.class})
 @ActiveProfiles("test")
-class TokenControllerTest {
+class TokenControllerTest extends SecurityBeansMockSupport {
 
     private static final String REISSUE_URI = "/api/harucut/reissue";
     private static final String LOGOUT_URI = "/api/harucut/logout";
