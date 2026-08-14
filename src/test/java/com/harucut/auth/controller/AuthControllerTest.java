@@ -4,7 +4,6 @@ import com.harucut.auth.dto.LoginRequest;
 import com.harucut.auth.dto.LoginResult;
 import com.harucut.auth.dto.RegisterRequest;
 import com.harucut.auth.security.CustomAuthenticationEntryPoint;
-import com.harucut.auth.security.CustomUserDetailsService;
 import com.harucut.auth.service.JwtTokenService;
 import com.harucut.auth.service.LoginService;
 import com.harucut.auth.service.RegisterService;
@@ -47,9 +46,6 @@ class AuthControllerTest {
 
     @MockitoBean
     private JwtTokenService jwtTokenService;
-
-    @MockitoBean
-    private CustomUserDetailsService userDetailsService;
 
     @Nested
     @DisplayName("POST /api/harucut/register")

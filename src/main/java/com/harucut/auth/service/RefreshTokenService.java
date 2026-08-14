@@ -7,6 +7,8 @@ import com.harucut.auth.jwt.IssuedToken;
 import com.harucut.auth.jwt.JwtClaims;
 import com.harucut.auth.jwt.TokenType;
 import com.harucut.common.exception.BusinessException;
+import com.harucut.user.entity.User;
+import com.harucut.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -17,6 +19,7 @@ import org.springframework.stereotype.Service;
 public class RefreshTokenService {
 
     private final RefreshTokenRepository repository;
+    private final UserRepository userRepository;
     private final JwtTokenService jwtTokenService;
     private final CookieManager cookieManager;
 
@@ -45,7 +48,11 @@ public class RefreshTokenService {
             }
         };
 
-        IssuedToken newAccess = jwtTokenService.createAccessToken(claims.publicId());
+        User user = userRepository.findByPublicId(claims.publicId())
+                .orElseThrow(() -> new BusinessException(AuthErrorCode.INVALID_TOKEN));
+
+        IssuedToken newAccess = jwtTokenService.createAccessToken(
+                user.getPublicId(), user.getUserRole(), user.getUserStatus());
 
         return new AuthTokenCookies(
                 cookieManager.createTokenCookie(CookieManager.ACCESS_TOKEN, newAccess),

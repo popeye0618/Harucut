@@ -4,8 +4,6 @@ import com.harucut.auth.cookie.CookieManager;
 import com.harucut.auth.dto.AuthTokenCookies;
 import com.harucut.auth.jwt.JwtProperties;
 import com.harucut.auth.security.CustomAuthenticationEntryPoint;
-import com.harucut.auth.security.CustomUserDetailsService;
-import com.harucut.auth.security.CustomUserPrincipal;
 import com.harucut.auth.service.JwtTokenService;
 import com.harucut.auth.service.RefreshTokenService;
 import com.harucut.config.SecurityConfig;
@@ -61,9 +59,6 @@ class TokenControllerTest {
 
     @MockitoBean
     private RefreshTokenService refreshTokenService;
-
-    @MockitoBean
-    private CustomUserDetailsService userDetailsService;
 
     @Nested
     @DisplayName("POST /reissue")
@@ -121,12 +116,9 @@ class TokenControllerTest {
         @DisplayName("유효한 access 쿠키가 있으면 principal에서 publicId를 풀어 로그아웃한다")
         void resolvesFromPrincipal() {
             User user = UserFixtures.localUser("user@harucut.com", "encoded", UserStatus.ACTIVE, UserRole.ROLE_USER);
-            given(userDetailsService.loadUserByPublicId(user.getPublicId()))
-                    .willReturn(new CustomUserPrincipal(user));
 
             MvcTestResult result = mockMvc.delete().uri(LOGOUT_URI)
-                    .cookie(cookie(CookieManager.ACCESS_TOKEN,
-                            jwtTokenService.createAccessToken(user.getPublicId()).value()))
+                    .cookie(cookie(CookieManager.ACCESS_TOKEN, accessToken(user)))
                     .exchange();
 
             assertThat(result).hasStatusOk();
@@ -195,10 +187,17 @@ class TokenControllerTest {
         assertThat(cookies.get(1)).startsWith("refreshToken=;");
     }
 
+    private String accessToken(User user) {
+        return jwtTokenService
+                .createAccessToken(user.getPublicId(), user.getUserRole(), user.getUserStatus())
+                .value();
+    }
+
     private String expiredAccessToken() {
         Clock past = Clock.offset(clock,
                 jwtProperties.accessExpiration().plus(Duration.ofMinutes(1)).negated());
-        return new JwtTokenService(jwtProperties, past).createAccessToken("expired-user").value();
+        return new JwtTokenService(jwtProperties, past)
+                .createAccessToken("expired-user", UserRole.ROLE_USER, UserStatus.ACTIVE).value();
     }
 
     private Cookie cookie(String name, String value) {

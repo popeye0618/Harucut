@@ -5,10 +5,16 @@ import com.harucut.auth.cookie.CookieProperties;
 import com.harucut.auth.dto.AuthTokenCookies;
 import com.harucut.auth.exception.AuthErrorCode;
 import com.harucut.auth.jwt.IssuedToken;
+import com.harucut.auth.jwt.JwtClaims;
 import com.harucut.auth.jwt.JwtProperties;
 import com.harucut.auth.jwt.TokenType;
 import com.harucut.common.exception.BusinessException;
 import com.harucut.support.FixedClockConfig;
+import com.harucut.support.UserFixtures;
+import com.harucut.user.entity.User;
+import com.harucut.user.enums.UserRole;
+import com.harucut.user.enums.UserStatus;
+import com.harucut.user.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -18,9 +24,11 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.RedisConnectionFailureException;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Clock;
 import java.time.Duration;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
@@ -45,6 +53,9 @@ class RefreshTokenServiceTest {
     @Mock
     private RefreshTokenRepository repository;
 
+    @Mock
+    private UserRepository userRepository;
+
     private JwtTokenService jwtTokenService;
     private RefreshTokenService refreshTokenService;
 
@@ -53,6 +64,7 @@ class RefreshTokenServiceTest {
         jwtTokenService = new JwtTokenService(properties(), CLOCK);
         refreshTokenService = new RefreshTokenService(
                 repository,
+                userRepository,
                 jwtTokenService,
                 new CookieManager(new CookieProperties("localhost", false, "Lax")));
     }
@@ -81,6 +93,7 @@ class RefreshTokenServiceTest {
         void rotates() {
             String presented = oldRefreshToken();
             givenRotation(presented, new RotationResult.Rotated("new-refresh"));
+            givenStoredUser(UserStatus.ACTIVE, UserRole.ROLE_USER);
 
             AuthTokenCookies cookies = refreshTokenService.reissue(presented);
 
@@ -94,6 +107,7 @@ class RefreshTokenServiceTest {
         void passesCandidateToScript() {
             String presented = oldRefreshToken();
             givenRotation(presented, new RotationResult.Rotated("new-refresh"));
+            givenStoredUser(UserStatus.ACTIVE, UserRole.ROLE_USER);
 
             refreshTokenService.reissue(presented);
 
@@ -111,6 +125,7 @@ class RefreshTokenServiceTest {
         void gracePeriodReturnsCurrentToken() {
             String presented = oldRefreshToken();
             givenRotation(presented, new RotationResult.Graced("current-refresh"));
+            givenStoredUser(UserStatus.ACTIVE, UserRole.ROLE_USER);
 
             AuthTokenCookies cookies = refreshTokenService.reissue(presented);
 
@@ -122,11 +137,55 @@ class RefreshTokenServiceTest {
         void gracePeriodStillIssuesAccessToken() {
             String presented = oldRefreshToken();
             givenRotation(presented, new RotationResult.Graced("current-refresh"));
+            givenStoredUser(UserStatus.ACTIVE, UserRole.ROLE_USER);
 
             AuthTokenCookies cookies = refreshTokenService.reissue(presented);
 
             assertThat(jwtTokenService.parse(cookies.accessTokenCookie().getValue()).type())
                     .isEqualTo(TokenType.ACCESS);
+        }
+
+        /*
+         * 이 테스트가 "차단이 최대 30분 안에 반영된다"의 유일한 증거다.
+         * 재발급이 DB를 다시 읽어 최신 status를 새 토큰에 싣는지를 본다.
+         */
+        @Test
+        @DisplayName("재발급된 access 토큰에는 DB의 최신 role/status가 실린다")
+        void putsFreshAuthorizationClaimsOnNewAccessToken() {
+            String presented = oldRefreshToken();
+            givenRotation(presented, new RotationResult.Rotated("new-refresh"));
+            givenStoredUser(UserStatus.BLOCKED, UserRole.ROLE_ADMIN);
+
+            AuthTokenCookies cookies = refreshTokenService.reissue(presented);
+
+            JwtClaims claims = jwtTokenService.parse(cookies.accessTokenCookie().getValue());
+            assertThat(claims.status()).isEqualTo(UserStatus.BLOCKED);
+            assertThat(claims.role()).isEqualTo(UserRole.ROLE_ADMIN);
+        }
+
+        @Test
+        @DisplayName("회전이 거부되면 사용자를 조회하지 않는다")
+        void skipsUserLookupWhenRotationRejected() {
+            String presented = oldRefreshToken();
+            givenRotation(presented, new RotationResult.ReuseDetected());
+
+            assertThatThrownBy(() -> refreshTokenService.reissue(presented))
+                    .isInstanceOf(BusinessException.class);
+
+            then(userRepository).shouldHaveNoInteractions();
+        }
+
+        @Test
+        @DisplayName("회전에 성공해도 사용자가 없으면 AUTH-011이다")
+        void rejectsWhenUserGone() {
+            String presented = oldRefreshToken();
+            givenRotation(presented, new RotationResult.Rotated("new-refresh"));
+            given(userRepository.findByPublicId(PUBLIC_ID)).willReturn(Optional.empty());
+
+            assertThatThrownBy(() -> refreshTokenService.reissue(presented))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting("errorCode")
+                    .isEqualTo(AuthErrorCode.INVALID_TOKEN);
         }
 
         @Test
@@ -156,7 +215,8 @@ class RefreshTokenServiceTest {
         @Test
         @DisplayName("access 토큰을 넣으면 저장소를 보지도 않고 AUTH-011을 던진다")
         void accessTokenRejected() {
-            String accessToken = jwtTokenService.createAccessToken(PUBLIC_ID).value();
+            String accessToken = jwtTokenService
+                    .createAccessToken(PUBLIC_ID, UserRole.ROLE_USER, UserStatus.ACTIVE).value();
 
             assertThatThrownBy(() -> refreshTokenService.reissue(accessToken))
                     .isInstanceOf(BusinessException.class)
@@ -164,6 +224,7 @@ class RefreshTokenServiceTest {
                     .isEqualTo(AuthErrorCode.INVALID_TOKEN);
 
             then(repository).shouldHaveNoInteractions();
+            then(userRepository).shouldHaveNoInteractions();
         }
     }
 
@@ -193,6 +254,14 @@ class RefreshTokenServiceTest {
     private void givenRotation(String presented, RotationResult result) {
         given(repository.rotate(eq(PUBLIC_ID), eq(presented), any(IssuedToken.class)))
                 .willReturn(result);
+    }
+
+    /** 회전에 성공한 요청만 사용자 조회까지 간다. */
+    private User givenStoredUser(UserStatus status, UserRole role) {
+        User user = UserFixtures.localUser("user@harucut.com", "encoded", status, role);
+        ReflectionTestUtils.setField(user, "publicId", PUBLIC_ID);
+        given(userRepository.findByPublicId(PUBLIC_ID)).willReturn(Optional.of(user));
+        return user;
     }
 
     private String oldRefreshToken() {

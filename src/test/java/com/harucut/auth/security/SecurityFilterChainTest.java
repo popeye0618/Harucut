@@ -58,9 +58,6 @@ class SecurityFilterChainTest {
     private Clock clock;
 
     @MockitoBean
-    private CustomUserDetailsService userDetailsService;
-
-    @MockitoBean
     private NoticeAdminService noticeAdminService;
 
     @MockitoBean
@@ -206,6 +203,38 @@ class SecurityFilterChainTest {
                     .bodyJson()
                     .hasPathSatisfying("$.code", c -> assertThat(c).isEqualTo("GEN-021"));
         }
+
+        /* 토큰에 실린 status=BLOCKED 만으로 authorities가 비는지 — DB 조회 없이 인가가 되는지 본다. */
+        @Test
+        @DisplayName("BLOCKED 사용자는 403 GEN-021을 받는다")
+        void blockedIsRejected() {
+            User user = user(UserStatus.BLOCKED, UserRole.ROLE_USER);
+
+            assertThat(mockMvc.get().uri(USER_URI).cookie(accessCookie(accessToken(user))))
+                    .hasStatus(HttpStatus.FORBIDDEN)
+                    .bodyJson()
+                    .hasPathSatisfying("$.code", c -> assertThat(c).isEqualTo("GEN-021"));
+        }
+    }
+
+    @Nested
+    @DisplayName("알려진 공백 — authenticated() 는 authority를 보지 않는다")
+    class KnownGap {
+
+        /*
+         * anyRequest().authenticated() 는 "익명이 아닌가"만 본다. authorities가 비어도 통과한다.
+         * 즉 BLOCKED 사용자가 @PreAuthorize 없는 엔드포인트는 그대로 호출할 수 있다.
+         * 이 변경이 만든 구멍이 아니라 원래 있던 것이다. Phase 3-7(인가 규칙 정리)에서 닫는다.
+         * 그때 이 테스트는 실패해야 하고, 실패하면 기대값을 403으로 바꾸면 된다.
+         */
+        @Test
+        @DisplayName("BLOCKED 사용자도 @PreAuthorize 없는 엔드포인트는 통과한다")
+        void blockedPassesAuthenticatedOnlyEndpoint() {
+            User user = user(UserStatus.BLOCKED, UserRole.ROLE_USER);
+
+            assertThat(mockMvc.get().uri(PROTECTED_URI).cookie(accessCookie(accessToken(user))))
+                    .hasStatusOk();
+        }
     }
 
     @Nested
@@ -231,26 +260,27 @@ class SecurityFilterChainTest {
     }
 
     private User user(UserStatus status, UserRole role) {
-        User user = UserFixtures.localUser("user@harucut.com", "encoded", status, role);
-        given(userDetailsService.loadUserByPublicId(user.getPublicId()))
-                .willReturn(new CustomUserPrincipal(user));
-        return user;
+        return UserFixtures.localUser("user@harucut.com", "encoded", status, role);
     }
 
     private String accessToken(User user) {
-        return jwtTokenService.createAccessToken(user.getPublicId()).value();
+        return jwtTokenService
+                .createAccessToken(user.getPublicId(), user.getUserRole(), user.getUserStatus())
+                .value();
     }
 
     private String expiredAccessToken() {
         Clock past = Clock.offset(clock,
                 jwtProperties.accessExpiration().plus(Duration.ofMinutes(1)).negated());
 
-        IssuedToken token = new JwtTokenService(jwtProperties, past).createAccessToken("expired-user");
+        IssuedToken token = new JwtTokenService(jwtProperties, past)
+                .createAccessToken("expired-user", UserRole.ROLE_USER, UserStatus.ACTIVE);
         return token.value();
     }
 
     private String forgedAccessToken() {
-        String token = jwtTokenService.createAccessToken("forged-user").value();
+        String token = jwtTokenService
+                .createAccessToken("forged-user", UserRole.ROLE_USER, UserStatus.ACTIVE).value();
         return token.substring(0, token.lastIndexOf('.')) + ".Zm9yZ2Vk";
     }
 

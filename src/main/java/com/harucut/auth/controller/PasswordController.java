@@ -3,7 +3,7 @@ package com.harucut.auth.controller;
 import com.harucut.auth.dto.*;
 import com.harucut.auth.password.PasswordChangeService;
 import com.harucut.auth.password.PasswordResetService;
-import com.harucut.auth.security.CustomUserPrincipal;
+import com.harucut.auth.security.AuthenticatedUser;
 import com.harucut.common.response.Response;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -38,11 +38,11 @@ public class PasswordController {
 
     @PatchMapping("/change/password")
     public Response<Void> changePassword(
-            @AuthenticationPrincipal CustomUserPrincipal principal,
+            @AuthenticationPrincipal AuthenticatedUser principal,
             @Valid @RequestBody ChangePasswordRequest request
     ) {
         passwordChangeService.changePassword(
-                principal.getPublicId(), request.oldPassword(), request.newPassword());
+                principal.publicId(), request.oldPassword(), request.newPassword());
         return Response.ok();
     }
 }

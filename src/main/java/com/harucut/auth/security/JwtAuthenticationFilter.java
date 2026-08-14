@@ -32,7 +32,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final RequestMatcher publicPaths;
     private final JwtTokenService jwtTokenService;
-    private final CustomUserDetailsService userDetailsService;
     private final CustomAuthenticationEntryPoint authenticationEntryPoint;
 
     @Override
@@ -62,8 +61,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             throw new CustomAuthenticationException(AuthErrorCode.INVALID_TOKEN);
         }
 
-        CustomUserPrincipal principal = userDetailsService.loadUserByPublicId(claims.publicId());
-        UsernamePasswordAuthenticationToken authentication = UsernamePasswordAuthenticationToken.authenticated(principal, null, principal.getAuthorities());
+        AuthenticatedUser principal = AuthenticatedUser.from(claims);
+        UsernamePasswordAuthenticationToken authentication =
+                UsernamePasswordAuthenticationToken.authenticated(principal, null, principal.authorities());
 
         authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 

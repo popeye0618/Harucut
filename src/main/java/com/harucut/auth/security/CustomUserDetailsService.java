@@ -21,10 +21,4 @@ public class CustomUserDetailsService implements UserDetailsService {
                 .map(CustomUserPrincipal::new)
                 .orElseThrow(() -> new CustomAuthenticationException(AuthErrorCode.USER_NOT_FOUND));
     }
-
-    public CustomUserPrincipal loadUserByPublicId(String publicId) {
-        return userRepository.findByPublicId(publicId)
-                .map(CustomUserPrincipal::new)
-                .orElseThrow(() -> new CustomAuthenticationException(AuthErrorCode.USER_NOT_FOUND));
-    }
 }

@@ -1,7 +1,6 @@
 package com.harucut.config;
 
 import com.harucut.auth.security.CustomAuthenticationEntryPoint;
-import com.harucut.auth.security.CustomUserDetailsService;
 import com.harucut.auth.security.JwtAuthenticationFilter;
 import com.harucut.auth.service.JwtTokenService;
 import lombok.RequiredArgsConstructor;
@@ -58,7 +57,6 @@ public class SecurityConfig {
                     .toArray(RequestMatcher[]::new));
 
     private final JwtTokenService jwtTokenService;
-    private final CustomUserDetailsService userDetailsService;
     private final CustomAuthenticationEntryPoint authenticationEntryPoint;
 
     @Bean
@@ -77,7 +75,7 @@ public class SecurityConfig {
                         handling.authenticationEntryPoint(authenticationEntryPoint))
 
                 .addFilterBefore(
-                        new JwtAuthenticationFilter(PUBLIC_MATCHER, jwtTokenService, userDetailsService, authenticationEntryPoint),
+                        new JwtAuthenticationFilter(PUBLIC_MATCHER, jwtTokenService, authenticationEntryPoint),
                         UsernamePasswordAuthenticationFilter.class
                 )
 
