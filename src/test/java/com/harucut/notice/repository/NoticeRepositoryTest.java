@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.test.context.ActiveProfiles;
 
 import java.time.LocalDateTime;
 
@@ -16,6 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @DataJpaTest
 @Import({JpaAuditingConfig.class, FixedClockConfig.class})
+@ActiveProfiles("test")
 class NoticeRepositoryTest {
 
     private static final LocalDateTime BASE = FixedClockConfig.FIXED_NOW;

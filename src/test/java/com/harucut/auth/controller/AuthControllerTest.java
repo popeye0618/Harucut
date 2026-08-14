@@ -21,6 +21,8 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseCookie;
+import com.harucut.support.SecurityBeansMockSupport;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.test.web.servlet.assertj.MvcTestResult;
@@ -34,7 +36,8 @@ import static org.mockito.BDDMockito.then;
 
 @WebMvcTest(AuthController.class)
 @Import({SecurityConfig.class, CustomAuthenticationEntryPoint.class, CustomAccessDeniedHandler.class})
-class AuthControllerTest {
+@ActiveProfiles("test")
+class AuthControllerTest extends SecurityBeansMockSupport {
 
     @Autowired
     private MockMvcTester mockMvc;

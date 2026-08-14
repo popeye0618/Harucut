@@ -1,5 +1,9 @@
 package com.harucut.config;
 
+import com.harucut.auth.oauth2.CustomOAuth2FailureHandler;
+import com.harucut.auth.oauth2.CustomOAuth2SuccessHandler;
+import com.harucut.auth.oauth2.CustomOAuth2UserService;
+import com.harucut.auth.oauth2.CustomOidcUserService;
 import com.harucut.auth.security.CustomAccessDeniedHandler;
 import com.harucut.auth.security.CustomAuthenticationEntryPoint;
 import com.harucut.auth.security.JwtAuthenticationFilter;
@@ -60,6 +64,10 @@ public class SecurityConfig {
     private final JwtTokenService jwtTokenService;
     private final CustomAuthenticationEntryPoint authenticationEntryPoint;
     private final CustomAccessDeniedHandler accessDeniedHandler;
+    private final CustomOAuth2UserService oAuth2UserService;
+    private final CustomOidcUserService oidcUserService;
+    private final CustomOAuth2SuccessHandler oAuth2SuccessHandler;
+    private final CustomOAuth2FailureHandler oAuth2FailureHandler;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -72,6 +80,13 @@ public class SecurityConfig {
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+
+                .oauth2Login(oauth2 -> oauth2
+                        .userInfoEndpoint(userInfo -> userInfo
+                                .userService(oAuth2UserService)
+                                .oidcUserService(oidcUserService))
+                        .successHandler(oAuth2SuccessHandler)
+                        .failureHandler(oAuth2FailureHandler))
 
                 .exceptionHandling(handling ->
                         handling

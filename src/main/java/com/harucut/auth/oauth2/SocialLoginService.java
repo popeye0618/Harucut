@@ -43,9 +43,6 @@ public class SocialLoginService {
         if (providerUser.providerId() == null) {
             throw missing(providerUser, "제공자 식별자(providerId)가 없다");
         }
-        if (providerUser.email() == null) {
-            throw missing(providerUser, "이메일이 없다 — 콘솔의 동의항목 설정을 확인할 것");
-        }
     }
 
     private User register(ProviderUser providerUser) {

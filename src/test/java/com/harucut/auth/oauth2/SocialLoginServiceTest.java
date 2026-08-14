@@ -122,18 +122,9 @@ class SocialLoginServiceTest {
         }
 
         @Test
-        @DisplayName("email이 없으면 OAuth2AuthenticationException을 던진다")
-        void missingEmail() {
-            assertThatThrownBy(() -> service.resolve("kakao", attributes("kakao-sub-1", null, "하루컷")))
-                    .isInstanceOf(OAuth2AuthenticationException.class)
-                    .extracting(e -> ((OAuth2AuthenticationException) e).getError().getErrorCode())
-                    .isEqualTo("missing_required_user_info");
-        }
-
-        @Test
         @DisplayName("DB를 아예 건드리지 않는다")
         void doesNotTouchRepository() {
-            assertThatThrownBy(() -> service.resolve("kakao", attributes("kakao-sub-1", null, "하루컷")))
+            assertThatThrownBy(() -> service.resolve("kakao", attributes(null, "user@kakao.com", "하루컷")))
                     .isInstanceOf(OAuth2AuthenticationException.class);
 
             then(userRepository).shouldHaveNoInteractions();

@@ -36,7 +36,9 @@ out/
 ### VS Code ###
 .vscode/
 
+### macOS ###
+.DS_Store
+
 docs/
 .env
 CLAUDE.md
-src/main/resources/application-local.yaml
