@@ -48,7 +48,8 @@ public class SecurityConfig {
             "/api/terms",
             "/api/payments/webhook",
             "/swagger-ui/**",
-            "/v3/api-docs/**"
+            "/v3/api-docs/**",
+            "/error"
     };
 
     private static final RequestMatcher PUBLIC_MATCHER = new OrRequestMatcher(
