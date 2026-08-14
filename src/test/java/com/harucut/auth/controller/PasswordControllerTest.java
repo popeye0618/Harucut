@@ -3,6 +3,7 @@ package com.harucut.auth.controller;
 import com.harucut.auth.cookie.CookieManager;
 import com.harucut.auth.password.PasswordChangeService;
 import com.harucut.auth.password.PasswordResetService;
+import com.harucut.auth.security.CustomAccessDeniedHandler;
 import com.harucut.auth.security.CustomAuthenticationEntryPoint;
 import com.harucut.auth.service.JwtTokenService;
 import com.harucut.config.SecurityConfig;
@@ -32,7 +33,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 
 @WebMvcTest(PasswordController.class)
-@Import({SecurityConfig.class, CustomAuthenticationEntryPoint.class,
+@Import({SecurityConfig.class, CustomAuthenticationEntryPoint.class, CustomAccessDeniedHandler.class,
         JwtTokenService.class, FixedClockConfig.class})
 @ActiveProfiles("test")
 class PasswordControllerTest {

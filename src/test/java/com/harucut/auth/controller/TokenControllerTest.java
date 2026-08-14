@@ -3,6 +3,7 @@ package com.harucut.auth.controller;
 import com.harucut.auth.cookie.CookieManager;
 import com.harucut.auth.dto.AuthTokenCookies;
 import com.harucut.auth.jwt.JwtProperties;
+import com.harucut.auth.security.CustomAccessDeniedHandler;
 import com.harucut.auth.security.CustomAuthenticationEntryPoint;
 import com.harucut.auth.service.JwtTokenService;
 import com.harucut.auth.service.RefreshTokenService;
@@ -37,7 +38,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.*;
 
 @WebMvcTest(TokenController.class)
-@Import({SecurityConfig.class, CustomAuthenticationEntryPoint.class,
+@Import({SecurityConfig.class, CustomAuthenticationEntryPoint.class, CustomAccessDeniedHandler.class,
         JwtTokenService.class, CookieManager.class, FixedClockConfig.class})
 @ActiveProfiles("test")
 class TokenControllerTest {

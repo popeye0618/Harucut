@@ -3,6 +3,7 @@ package com.harucut.auth.controller;
 import com.harucut.auth.dto.LoginRequest;
 import com.harucut.auth.dto.LoginResult;
 import com.harucut.auth.dto.RegisterRequest;
+import com.harucut.auth.security.CustomAccessDeniedHandler;
 import com.harucut.auth.security.CustomAuthenticationEntryPoint;
 import com.harucut.auth.service.JwtTokenService;
 import com.harucut.auth.service.LoginService;
@@ -32,7 +33,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 
 @WebMvcTest(AuthController.class)
-@Import({SecurityConfig.class, CustomAuthenticationEntryPoint.class})
+@Import({SecurityConfig.class, CustomAuthenticationEntryPoint.class, CustomAccessDeniedHandler.class})
 class AuthControllerTest {
 
     @Autowired
