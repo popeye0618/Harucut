@@ -17,7 +17,8 @@ import java.time.LocalDateTime;
         name = "users",
         uniqueConstraints = {
                 @UniqueConstraint(name = "uk_users_public_id", columnNames = "public_id"),
-                @UniqueConstraint(name = "uk_users_provider_email", columnNames = {"provider", "email"})
+                @UniqueConstraint(name = "uk_users_provider_email", columnNames = {"provider", "email"}),
+                @UniqueConstraint(name = "uk_users_provider_provider_id", columnNames = {"provider", "provider_id"})
         }
 )
 @Getter
@@ -79,6 +80,10 @@ public class User extends BaseEntity {
 
     public static User localUser(String email, String encodedPassword, String username) {
         return new User(Provider.HARUCUT, null, email, encodedPassword, username);
+    }
+
+    public static User socialUser(Provider provider, String providerId, String email, String username) {
+        return new User(provider, providerId, email, null, username);
     }
 
     public void changePassword(String encodedPassword) {
