@@ -18,19 +18,17 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.RedisConnectionFailureException;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.ValueOperations;
 
 import java.time.Clock;
 import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.AssertionsForClassTypes.assertThatCode;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
-import static org.mockito.Mockito.never;
+import static org.mockito.BDDMockito.willThrow;
 
 @ExtendWith(MockitoExtension.class)
 class RefreshTokenServiceTest {
@@ -38,7 +36,6 @@ class RefreshTokenServiceTest {
     private static final String SECRET =
             "test-secret-key-must-be-at-least-256-bits-for-hs256-algorithm-aa";
     private static final String PUBLIC_ID = "test-public-id";
-    private static final String KEY = "REFRESH_TOKEN:USER:" + PUBLIC_ID;
     private static final Duration REFRESH_TTL = Duration.ofDays(14);
 
     private static final Clock CLOCK = Clock.fixed(
@@ -46,10 +43,7 @@ class RefreshTokenServiceTest {
             FixedClockConfig.ZONE);
 
     @Mock
-    private StringRedisTemplate redisTemplate;
-
-    @Mock
-    private ValueOperations<String, String> valueOperations;
+    private RefreshTokenRepository repository;
 
     private JwtTokenService jwtTokenService;
     private RefreshTokenService refreshTokenService;
@@ -58,7 +52,7 @@ class RefreshTokenServiceTest {
     void setUp() {
         jwtTokenService = new JwtTokenService(properties(), CLOCK);
         refreshTokenService = new RefreshTokenService(
-                redisTemplate,
+                repository,
                 jwtTokenService,
                 new CookieManager(new CookieProperties("localhost", false, "Lax")));
     }
@@ -68,13 +62,13 @@ class RefreshTokenServiceTest {
     class Save {
 
         @Test
-        @DisplayName("REFRESH_TOKEN:USER:{publicId} 키에 TTL과 함께 저장한다")
-        void saveWithTTL() {
-            given(redisTemplate.opsForValue()).willReturn(valueOperations);
+        @DisplayName("저장소에 그대로 위임한다")
+        void delegates() {
+            IssuedToken token = new IssuedToken("refresh-value", REFRESH_TTL);
 
-            refreshTokenService.save(PUBLIC_ID, new IssuedToken("refresh-value", REFRESH_TTL));
+            refreshTokenService.save(PUBLIC_ID, token);
 
-            then(valueOperations).should().set(KEY, "refresh-value", REFRESH_TTL);
+            then(repository).should().save(PUBLIC_ID, token);
         }
     }
 
@@ -83,52 +77,84 @@ class RefreshTokenServiceTest {
     class Reissue {
 
         @Test
-        @DisplayName("저장값과 일치하면 새 토큰으로 회전하고 쿠키 2개를 돌려준다")
+        @DisplayName("회전에 성공하면 새 토큰을 쿠키로 내려준다")
         void rotates() {
-            String oldRefreshToken = oldRefreshToken();
-            given(redisTemplate.opsForValue()).willReturn(valueOperations);
-            given(valueOperations.get(KEY)).willReturn(oldRefreshToken);
-            AuthTokenCookies cookies = refreshTokenService.reissue(oldRefreshToken);
+            String presented = oldRefreshToken();
+            givenRotation(presented, new RotationResult.Rotated("new-refresh"));
 
-            ArgumentCaptor<String> saved = ArgumentCaptor.forClass(String.class);
-            then(valueOperations).should().set(eq(KEY), saved.capture(), eq(REFRESH_TTL));
+            AuthTokenCookies cookies = refreshTokenService.reissue(presented);
 
-            assertThat(saved.getValue()).isNotEqualTo(oldRefreshToken);
-            assertThat(cookies.accessTokenCookie().getName()).isEqualTo("accessToken");
-            assertThat(jwtTokenService.parse(cookies.accessTokenCookie().getValue()).type()).isEqualTo(TokenType.ACCESS);
+            assertThat(cookies.refreshTokenCookie().getValue()).isEqualTo("new-refresh");
+            assertThat(jwtTokenService.parse(cookies.accessTokenCookie().getValue()).type())
+                    .isEqualTo(TokenType.ACCESS);
         }
 
         @Test
-        @DisplayName("저장값과 다르면 재사용으로 보고 키를 지운 뒤 AUTH-011을 던진다")
-        void replayDetected() {
-            String oldRefreshToken = oldRefreshToken();
-            given(redisTemplate.opsForValue()).willReturn(valueOperations);
-            given(valueOperations.get(KEY)).willReturn(jwtTokenService.createRefreshToken(PUBLIC_ID).value());
+        @DisplayName("스크립트가 만들어 둔 후보 토큰을 그대로 넘긴다")
+        void passesCandidateToScript() {
+            String presented = oldRefreshToken();
+            givenRotation(presented, new RotationResult.Rotated("new-refresh"));
 
-            assertThatThrownBy(() -> refreshTokenService.reissue(oldRefreshToken))
+            refreshTokenService.reissue(presented);
+
+            ArgumentCaptor<IssuedToken> candidate = ArgumentCaptor.forClass(IssuedToken.class);
+            then(repository).should().rotate(eq(PUBLIC_ID), eq(presented), candidate.capture());
+
+            assertThat(candidate.getValue().value()).isNotEqualTo(presented);
+            assertThat(candidate.getValue().ttl()).isEqualTo(REFRESH_TTL);
+            assertThat(jwtTokenService.parse(candidate.getValue().value()).type())
+                    .isEqualTo(TokenType.REFRESH);
+        }
+
+        @Test
+        @DisplayName("grace 창 안의 동시 요청에는 회전된 현재 토큰을 그대로 준다")
+        void gracePeriodReturnsCurrentToken() {
+            String presented = oldRefreshToken();
+            givenRotation(presented, new RotationResult.Graced("current-refresh"));
+
+            AuthTokenCookies cookies = refreshTokenService.reissue(presented);
+
+            assertThat(cookies.refreshTokenCookie().getValue()).isEqualTo("current-refresh");
+        }
+
+        @Test
+        @DisplayName("grace로 통과해도 access 토큰은 새로 발급한다")
+        void gracePeriodStillIssuesAccessToken() {
+            String presented = oldRefreshToken();
+            givenRotation(presented, new RotationResult.Graced("current-refresh"));
+
+            AuthTokenCookies cookies = refreshTokenService.reissue(presented);
+
+            assertThat(jwtTokenService.parse(cookies.accessTokenCookie().getValue()).type())
+                    .isEqualTo(TokenType.ACCESS);
+        }
+
+        @Test
+        @DisplayName("세션이 없으면 AUTH-011을 던진다")
+        void noSession() {
+            String presented = oldRefreshToken();
+            givenRotation(presented, new RotationResult.NoSession());
+
+            assertThatThrownBy(() -> refreshTokenService.reissue(presented))
                     .isInstanceOf(BusinessException.class)
                     .extracting("errorCode")
                     .isEqualTo(AuthErrorCode.INVALID_TOKEN);
-
-            then(redisTemplate).should().delete(KEY);
         }
 
         @Test
-        @DisplayName("저장값이 없으면 지울 세션이 없으므로 삭제하지 않고 AUTH-011만 던진다")
-        void noStoredToken() {
-            given(redisTemplate.opsForValue()).willReturn(valueOperations);
-            given(valueOperations.get(KEY)).willReturn(null);
+        @DisplayName("재사용으로 판정되면 AUTH-011을 던진다")
+        void reuseDetected() {
+            String presented = oldRefreshToken();
+            givenRotation(presented, new RotationResult.ReuseDetected());
 
-            assertThatThrownBy(() -> refreshTokenService.reissue(oldRefreshToken()))
+            assertThatThrownBy(() -> refreshTokenService.reissue(presented))
                     .isInstanceOf(BusinessException.class)
                     .extracting("errorCode")
                     .isEqualTo(AuthErrorCode.INVALID_TOKEN);
-
-            then(redisTemplate).should(never()).delete(KEY);
         }
 
         @Test
-        @DisplayName("access 토큰을 넣으면 Redis를 보지도 않고 AUTH-011을 던진다")
+        @DisplayName("access 토큰을 넣으면 저장소를 보지도 않고 AUTH-011을 던진다")
         void accessTokenRejected() {
             String accessToken = jwtTokenService.createAccessToken(PUBLIC_ID).value();
 
@@ -137,31 +163,36 @@ class RefreshTokenServiceTest {
                     .extracting("errorCode")
                     .isEqualTo(AuthErrorCode.INVALID_TOKEN);
 
-            then(redisTemplate).shouldHaveNoInteractions();
+            then(repository).shouldHaveNoInteractions();
         }
     }
 
     @Nested
     @DisplayName("revoke")
-    class revoke {
+    class Revoke {
 
         @Test
-        @DisplayName("키를 지운다")
-        void deletesKey() {
+        @DisplayName("저장소에 삭제를 위임한다")
+        void delegates() {
             refreshTokenService.revoke(PUBLIC_ID);
 
-            then(redisTemplate).should().delete(KEY);
+            then(repository).should().delete(PUBLIC_ID);
         }
 
         @Test
-        @DisplayName("Redis 삭제가 실패하면 예외를 그대로 던진다")
+        @DisplayName("삭제가 실패하면 예외를 그대로 던진다")
         void propagatesRedisFailure() {
-            given(redisTemplate.delete(KEY))
-                    .willThrow(new RedisConnectionFailureException("down"));
+            willThrow(new RedisConnectionFailureException("down"))
+                    .given(repository).delete(PUBLIC_ID);
 
             assertThatThrownBy(() -> refreshTokenService.revoke(PUBLIC_ID))
                     .isInstanceOf(RedisConnectionFailureException.class);
         }
+    }
+
+    private void givenRotation(String presented, RotationResult result) {
+        given(repository.rotate(eq(PUBLIC_ID), eq(presented), any(IssuedToken.class)))
+                .willReturn(result);
     }
 
     private String oldRefreshToken() {
