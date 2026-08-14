@@ -61,9 +61,13 @@ public class EmailVerificationService {
         repository.markVerified(email);
     }
 
-    public void consumeVerified(String email) {
-        if (!repository.consumeVerified(email)) {
+    public void requireVerified(String email) {
+        if (!repository.isVerified(email)) {
             throw new BusinessException(AuthErrorCode.EMAIL_NOT_VERIFIED);
         }
+    }
+
+    public void clearVerified(String email) {
+        repository.removeVerified(email);
     }
 }

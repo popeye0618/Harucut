@@ -15,6 +15,7 @@ import java.time.Duration;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
 class EmailVerificationRepositoryTest {
@@ -98,27 +99,36 @@ class EmailVerificationRepositoryTest {
         }
 
         @Test
-        @DisplayName("소비는 삭제 결과로 판정한다 — 지워졌으면 true")
-        void consumesExisting() {
-            given(redisTemplate.delete(VERIFIED_KEY)).willReturn(true);
+        @DisplayName("키가 있으면 true — 조회는 지우지 않는다")
+        void verifiedWhenKeyExists() {
+            given(redisTemplate.hasKey(VERIFIED_KEY)).willReturn(true);
 
-            assertThat(repository.consumeVerified(EMAIL)).isTrue();
+            assertThat(repository.isVerified(EMAIL)).isTrue();
+            then(redisTemplate).should(never()).delete(VERIFIED_KEY);
         }
 
         @Test
-        @DisplayName("키가 없었으면 false")
-        void consumeMissingIsFalse() {
-            given(redisTemplate.delete(VERIFIED_KEY)).willReturn(false);
+        @DisplayName("키가 없으면 false")
+        void notVerifiedWhenMissing() {
+            given(redisTemplate.hasKey(VERIFIED_KEY)).willReturn(false);
 
-            assertThat(repository.consumeVerified(EMAIL)).isFalse();
+            assertThat(repository.isVerified(EMAIL)).isFalse();
         }
 
         @Test
         @DisplayName("Redis가 null을 반환해도 false로 처리한다")
         void treatsNullAsFalse() {
-            given(redisTemplate.delete(VERIFIED_KEY)).willReturn(null);
+            given(redisTemplate.hasKey(VERIFIED_KEY)).willReturn(null);
 
-            assertThat(repository.consumeVerified(EMAIL)).isFalse();
+            assertThat(repository.isVerified(EMAIL)).isFalse();
+        }
+
+        @Test
+        @DisplayName("email:verified 키를 지운다")
+        void removesVerified() {
+            repository.removeVerified(EMAIL);
+
+            then(redisTemplate).should().delete(VERIFIED_KEY);
         }
     }
 

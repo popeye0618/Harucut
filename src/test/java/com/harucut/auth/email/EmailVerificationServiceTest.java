@@ -209,27 +209,38 @@ class EmailVerificationServiceTest {
     }
 
     @Nested
-    @DisplayName("consumeVerified")
-    class ConsumeVerified {
+    @DisplayName("requireVerified / clearVerified")
+    class VerifiedFlag {
 
         @Test
-        @DisplayName("verified 키가 있으면 소비하고 통과시킨다")
-        void consumesFlag() {
-            given(repository.consumeVerified(EMAIL)).willReturn(true);
+        @DisplayName("verified 키가 있으면 통과시키되 지우지 않는다")
+        void passesWithoutClearing() {
+            given(repository.isVerified(EMAIL)).willReturn(true);
 
-            assertThatCode(() -> service.consumeVerified(EMAIL))
+            assertThatCode(() -> service.requireVerified(EMAIL))
                     .doesNotThrowAnyException();
+
+            then(repository).should(never()).removeVerified(any());
         }
 
         @Test
         @DisplayName("verified 키가 없으면 AUTH-004를 던진다")
         void rejectsUnverified() {
-            given(repository.consumeVerified(EMAIL)).willReturn(false);
+            given(repository.isVerified(EMAIL)).willReturn(false);
 
-            assertThatThrownBy(() -> service.consumeVerified(EMAIL))
+            assertThatThrownBy(() -> service.requireVerified(EMAIL))
                     .isInstanceOf(BusinessException.class)
                     .extracting("errorCode")
                     .isEqualTo(AuthErrorCode.EMAIL_NOT_VERIFIED);
+        }
+
+        @Test
+        @DisplayName("clearVerified는 상태를 보지 않고 지운다")
+        void clearsWithoutChecking() {
+            service.clearVerified(EMAIL);
+
+            then(repository).should().removeVerified(EMAIL);
+            then(repository).should(never()).isVerified(any());
         }
     }
 

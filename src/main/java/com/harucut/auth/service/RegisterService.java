@@ -8,11 +8,13 @@ import com.harucut.user.enums.Provider;
 import com.harucut.auth.exception.AuthErrorCode;
 import com.harucut.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class RegisterService {
@@ -27,7 +29,7 @@ public class RegisterService {
             throw new BusinessException(AuthErrorCode.EMAIL_ALREADY_IN_USE);
         }
 
-        emailVerificationService.consumeVerified(request.email());
+        emailVerificationService.requireVerified(request.email());
 
         User user = User.localUser(
                 request.email(),
@@ -38,7 +40,10 @@ public class RegisterService {
         try {
             userRepository.save(user);
         } catch (DataIntegrityViolationException e) {
+            log.warn("[register] 저장 중 제약 위반. publicId={}", user.getPublicId(), e);
             throw new BusinessException(AuthErrorCode.EMAIL_ALREADY_IN_USE);
         }
+
+        emailVerificationService.clearVerified(request.email());
     }
 }
