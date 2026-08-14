@@ -3,9 +3,8 @@ package com.harucut.auth.controller;
 import com.harucut.auth.cookie.CookieManager;
 import com.harucut.auth.password.PasswordChangeService;
 import com.harucut.auth.password.PasswordResetService;
+import com.harucut.auth.security.CustomAccessDeniedHandler;
 import com.harucut.auth.security.CustomAuthenticationEntryPoint;
-import com.harucut.auth.security.CustomUserDetailsService;
-import com.harucut.auth.security.CustomUserPrincipal;
 import com.harucut.auth.service.JwtTokenService;
 import com.harucut.config.SecurityConfig;
 import com.harucut.support.FixedClockConfig;
@@ -34,7 +33,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 
 @WebMvcTest(PasswordController.class)
-@Import({SecurityConfig.class, CustomAuthenticationEntryPoint.class,
+@Import({SecurityConfig.class, CustomAuthenticationEntryPoint.class, CustomAccessDeniedHandler.class,
         JwtTokenService.class, FixedClockConfig.class})
 @ActiveProfiles("test")
 class PasswordControllerTest {
@@ -55,9 +54,6 @@ class PasswordControllerTest {
 
     @MockitoBean
     private PasswordChangeService passwordChangeService;
-
-    @MockitoBean
-    private CustomUserDetailsService userDetailsService;
 
     @Nested
     @DisplayName("POST /reset/password/code")
@@ -202,8 +198,6 @@ class PasswordControllerTest {
         void usesPrincipalPublicId() {
             User user = UserFixtures.localUser("user@harucut.com", "encoded",
                     UserStatus.ACTIVE, UserRole.ROLE_USER);
-            given(userDetailsService.loadUserByPublicId(user.getPublicId()))
-                    .willReturn(new CustomUserPrincipal(user));
 
             assertThat(mockMvc.patch().uri(CHANGE_URI)
                     .cookie(accessCookie(user.getPublicId()))
@@ -221,8 +215,6 @@ class PasswordControllerTest {
         void blankOldPassword() {
             User user = UserFixtures.localUser("user@harucut.com", "encoded",
                     UserStatus.ACTIVE, UserRole.ROLE_USER);
-            given(userDetailsService.loadUserByPublicId(user.getPublicId()))
-                    .willReturn(new CustomUserPrincipal(user));
 
             assertThat(mockMvc.patch().uri(CHANGE_URI)
                     .cookie(accessCookie(user.getPublicId()))
@@ -238,8 +230,8 @@ class PasswordControllerTest {
     }
 
     private Cookie accessCookie(String publicId) {
-        return new Cookie(CookieManager.ACCESS_TOKEN,
-                jwtTokenService.createAccessToken(publicId).value());
+        return new Cookie(CookieManager.ACCESS_TOKEN, jwtTokenService
+                .createAccessToken(publicId, UserRole.ROLE_USER, UserStatus.ACTIVE).value());
     }
 
     private MockMvcTester.MockMvcRequestBuilder post(String uri, String json) {

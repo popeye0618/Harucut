@@ -2,10 +2,13 @@ package com.harucut.auth.service;
 
 import com.harucut.auth.exception.AuthErrorCode;
 import com.harucut.auth.jwt.IssuedToken;
+import com.harucut.auth.jwt.JwtClaims;
 import com.harucut.auth.jwt.JwtProperties;
 import com.harucut.auth.jwt.TokenType;
 import com.harucut.common.exception.BusinessException;
 import com.harucut.support.FixedClockConfig;
+import com.harucut.user.enums.UserRole;
+import com.harucut.user.enums.UserStatus;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtBuilder;
 import io.jsonwebtoken.Jwts;
@@ -16,6 +19,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -43,6 +47,8 @@ class JwtTokenServiceTest {
     private static final Duration ACCESS_EXPIRATION = Duration.ofMinutes(30);
     private static final Duration REFRESH_EXPIRATION = Duration.ofDays(14);
     private static final String PUBLIC_ID = "AbCdEf123456";
+    private static final UserRole ROLE = UserRole.ROLE_USER;
+    private static final UserStatus STATUS = UserStatus.ACTIVE;
 
     private JwtTokenService jwtTokenService;
 
@@ -58,7 +64,7 @@ class JwtTokenServiceTest {
         @Test
         @DisplayName("발급한 토큰을 파싱하면 원래 publicId가 나온다")
         void roundTripsPublicId() {
-            IssuedToken token = jwtTokenService.createAccessToken(PUBLIC_ID);
+            IssuedToken token = jwtTokenService.createAccessToken(PUBLIC_ID, ROLE, STATUS);
 
             assertThat(jwtTokenService.parse(token.value()).publicId()).isEqualTo(PUBLIC_ID);
         }
@@ -66,7 +72,7 @@ class JwtTokenServiceTest {
         @Test
         @DisplayName("access는 ACCESS, refresh는 REFRESH 타입으로 발급된다")
         void marksTokenType() {
-            String access = jwtTokenService.createAccessToken(PUBLIC_ID).value();
+            String access = jwtTokenService.createAccessToken(PUBLIC_ID, ROLE, STATUS).value();
             String refresh = jwtTokenService.createRefreshToken(PUBLIC_ID).value();
 
             assertThat(jwtTokenService.parse(access).type()).isEqualTo(TokenType.ACCESS);
@@ -76,7 +82,7 @@ class JwtTokenServiceTest {
         @Test
         @DisplayName("발급 결과의 ttl이 설정값과 같다")
         void exposesConfiguredTtl() {
-            IssuedToken access = jwtTokenService.createAccessToken(PUBLIC_ID);
+            IssuedToken access = jwtTokenService.createAccessToken(PUBLIC_ID, ROLE, STATUS);
             IssuedToken refresh = jwtTokenService.createRefreshToken(PUBLIC_ID);
 
             assertThat(access.ttl()).isEqualTo(ACCESS_EXPIRATION);
@@ -84,16 +90,44 @@ class JwtTokenServiceTest {
         }
 
         @Test
-        @DisplayName("클레임에 sub, iss, type이 담기고 exp - iat가 만료 시간과 같다")
+        @DisplayName("클레임에 sub, iss, type, role, status가 담기고 exp - iat가 만료 시간과 같다")
         void writesExpectedClaims() {
-            Claims claims = rawClaims(jwtTokenService.createAccessToken(PUBLIC_ID).value());
+            Claims claims = rawClaims(jwtTokenService.createAccessToken(PUBLIC_ID, ROLE, STATUS).value());
 
             assertThat(claims.getSubject()).isEqualTo(PUBLIC_ID);
             assertThat(claims.getIssuer()).isEqualTo("Harucut");
             assertThat(claims.get("type", String.class)).isEqualTo("ACCESS");
+            assertThat(claims.get("role", String.class)).isEqualTo("ROLE_USER");
+            assertThat(claims.get("status", String.class)).isEqualTo("ACTIVE");
             assertThat(claims.getIssuedAt()).isEqualTo(Date.from(BASE));
             assertThat(claims.getExpiration().getTime() - claims.getIssuedAt().getTime())
                     .isEqualTo(ACCESS_EXPIRATION.toMillis());
+        }
+
+        @Test
+        @DisplayName("access 토큰의 role/status는 넣은 그대로 돌아온다")
+        void roundTripsAuthorizationClaims() {
+            IssuedToken token = jwtTokenService.createAccessToken(
+                    PUBLIC_ID, UserRole.ROLE_ADMIN, UserStatus.DELETED_REQUESTED);
+
+            JwtClaims claims = jwtTokenService.parse(token.value());
+
+            assertThat(claims.role()).isEqualTo(UserRole.ROLE_ADMIN);
+            assertThat(claims.status()).isEqualTo(UserStatus.DELETED_REQUESTED);
+        }
+
+        @Test
+        @DisplayName("refresh 토큰에는 인가 정보를 싣지 않는다")
+        void refreshCarriesNoAuthorizationClaims() {
+            String refresh = jwtTokenService.createRefreshToken(PUBLIC_ID).value();
+
+            Claims raw = rawClaims(refresh);
+            assertThat(raw.get("role")).isNull();
+            assertThat(raw.get("status")).isNull();
+
+            JwtClaims claims = jwtTokenService.parse(refresh);
+            assertThat(claims.role()).isNull();
+            assertThat(claims.status()).isNull();
         }
     }
 
@@ -104,7 +138,7 @@ class JwtTokenServiceTest {
         @Test
         @DisplayName("만료 1초 전에는 통과한다")
         void acceptsTokenJustBeforeExpiry() {
-            String token = jwtTokenService.createAccessToken(PUBLIC_ID).value();
+            String token = jwtTokenService.createAccessToken(PUBLIC_ID, ROLE, STATUS).value();
             JwtTokenService justBefore = serviceAt(BASE.plus(ACCESS_EXPIRATION).minusSeconds(1));
 
             assertThat(justBefore.parse(token).publicId()).isEqualTo(PUBLIC_ID);
@@ -113,7 +147,7 @@ class JwtTokenServiceTest {
         @Test
         @DisplayName("만료 1초 후에는 AUTH-012다")
         void rejectsExpiredToken() {
-            String token = jwtTokenService.createAccessToken(PUBLIC_ID).value();
+            String token = jwtTokenService.createAccessToken(PUBLIC_ID, ROLE, STATUS).value();
             JwtTokenService justAfter = serviceAt(BASE.plus(ACCESS_EXPIRATION).plusSeconds(1));
 
             assertThatThrownBy(() -> justAfter.parse(token))
@@ -128,7 +162,7 @@ class JwtTokenServiceTest {
             String forged = new JwtTokenService(
                     new JwtProperties(OTHER_SECRET, ACCESS_EXPIRATION, REFRESH_EXPIRATION),
                     Clock.fixed(BASE, ZONE)
-            ).createAccessToken(PUBLIC_ID).value();
+            ).createAccessToken(PUBLIC_ID, ROLE, STATUS).value();
 
             assertThatThrownBy(() -> jwtTokenService.parse(forged))
                     .isInstanceOf(BusinessException.class)
@@ -168,6 +202,36 @@ class JwtTokenServiceTest {
                     .extracting("errorCode")
                     .isEqualTo(AuthErrorCode.INVALID_TOKEN);
         }
+
+        /*
+         * 인가 정보가 토큰 안으로 들어왔으므로, 클레임이 없거나 모르는 값일 때
+         * 기본값으로 떨어지면 클레임 하나 지운 토큰으로 권한을 얻는다. 반드시 거부여야 한다.
+         */
+        @ParameterizedTest(name = "[{index}] role={0}, status={1}")
+        @CsvSource(nullValues = "null", value = {
+                "null,         ACTIVE",
+                "ROLE_USER,    null",
+                "null,         null",
+                "ROLE_MASTER,  ACTIVE",
+                "ROLE_USER,    ZOMBIE"
+        })
+        @DisplayName("access 토큰의 role/status가 없거나 모르는 값이면 AUTH-011이다")
+        void rejectsAccessTokenWithBadAuthorizationClaims(String role, String status) {
+            String token = signedAccess("ACCESS", role, status);
+
+            assertThatThrownBy(() -> jwtTokenService.parse(token))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting("errorCode")
+                    .isEqualTo(AuthErrorCode.INVALID_TOKEN);
+        }
+
+        @Test
+        @DisplayName("refresh 토큰은 role/status가 없어도 통과한다")
+        void acceptsRefreshTokenWithoutAuthorizationClaims() {
+            String token = signedAccess("REFRESH", null, null);
+
+            assertThat(jwtTokenService.parse(token).publicId()).isEqualTo(PUBLIC_ID);
+        }
     }
 
     private static JwtTokenService serviceAt(Instant instant) {
@@ -191,6 +255,10 @@ class JwtTokenServiceTest {
     }
 
     private static String signedWithoutType(String type) {
+        return signedAccess(type, ROLE.name(), STATUS.name());
+    }
+
+    private static String signedAccess(String type, String role, String status) {
         JwtBuilder builder = Jwts.builder()
                 .subject(PUBLIC_ID)
                 .issuer("Harucut")
@@ -199,6 +267,12 @@ class JwtTokenServiceTest {
 
         if (type != null) {
             builder.claim("type", type);
+        }
+        if (role != null) {
+            builder.claim("role", role);
+        }
+        if (status != null) {
+            builder.claim("status", status);
         }
         return builder.signWith(secretKey()).compact();
     }

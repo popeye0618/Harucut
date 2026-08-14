@@ -28,7 +28,8 @@ public class LoginService {
     public LoginResult login(LoginRequest request) {
         CustomUserPrincipal principal = authenticate(request);
 
-        IssuedToken accessToken = jwtTokenService.createAccessToken(principal.getPublicId());
+        IssuedToken accessToken = jwtTokenService.createAccessToken(
+                principal.getPublicId(), principal.getUserRole(), principal.getUserStatus());
         IssuedToken refreshToken = jwtTokenService.createRefreshToken(principal.getPublicId());
         refreshTokenService.save(principal.getPublicId(), refreshToken);
 

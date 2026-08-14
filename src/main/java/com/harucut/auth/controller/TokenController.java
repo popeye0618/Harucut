@@ -4,7 +4,7 @@ import com.harucut.auth.cookie.CookieManager;
 import com.harucut.auth.dto.AuthTokenCookies;
 import com.harucut.auth.jwt.JwtClaims;
 import com.harucut.auth.jwt.TokenType;
-import com.harucut.auth.security.CustomUserPrincipal;
+import com.harucut.auth.security.AuthenticatedUser;
 import com.harucut.auth.service.JwtTokenService;
 import com.harucut.auth.service.RefreshTokenService;
 import com.harucut.common.response.Response;
@@ -42,7 +42,7 @@ public class TokenController {
 
     @DeleteMapping("/logout")
     public ResponseEntity<Response<Void>> logout(
-            @AuthenticationPrincipal CustomUserPrincipal principal,
+            @AuthenticationPrincipal AuthenticatedUser principal,
             @CookieValue(value = CookieManager.REFRESH_TOKEN, required = false) String refreshToken
     ) {
         resolvePublicId(principal, refreshToken).ifPresent(this::revokeQuietly);
@@ -61,9 +61,9 @@ public class TokenController {
         }
     }
 
-    private Optional<String> resolvePublicId(CustomUserPrincipal principal, String refreshToken) {
+    private Optional<String> resolvePublicId(AuthenticatedUser principal, String refreshToken) {
         if (principal != null) {
-            return Optional.of(principal.getPublicId());
+            return Optional.of(principal.publicId());
         }
         if (!StringUtils.hasText(refreshToken)) {
             return Optional.empty();

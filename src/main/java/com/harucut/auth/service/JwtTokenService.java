@@ -6,10 +6,9 @@ import com.harucut.auth.jwt.JwtClaims;
 import com.harucut.auth.jwt.JwtProperties;
 import com.harucut.auth.jwt.TokenType;
 import com.harucut.common.exception.BusinessException;
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.ExpiredJwtException;
-import io.jsonwebtoken.JwtException;
-import io.jsonwebtoken.Jwts;
+import com.harucut.user.enums.UserRole;
+import com.harucut.user.enums.UserStatus;
+import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.stereotype.Service;
 
@@ -19,12 +18,15 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Date;
+import java.util.function.Function;
 
 @Service
 public class JwtTokenService {
 
     private static final String ISSUER = "Harucut";
     private static final String TYPE_CLAIM = "type";
+    private static final String ROLE_CLAIM = "role";
+    private static final String STATUS_CLAIM = "status";
 
     private final SecretKey key;
     private final Duration accessExpiration;
@@ -38,12 +40,22 @@ public class JwtTokenService {
         this.clock = clock;
     }
 
-    public IssuedToken createAccessToken(String publicId) {
-        return create(publicId, TokenType.ACCESS, accessExpiration);
+    public IssuedToken createAccessToken(String publicId, UserRole role, UserStatus status) {
+        String value = base(publicId, TokenType.ACCESS, accessExpiration)
+                .claim(ROLE_CLAIM, role.name())
+                .claim(STATUS_CLAIM, status.name())
+                .signWith(key)
+                .compact();
+
+        return new IssuedToken(value, accessExpiration);
     }
 
     public IssuedToken createRefreshToken(String publicId) {
-        return create(publicId, TokenType.REFRESH, refreshExpiration);
+        String value = base(publicId, TokenType.REFRESH, refreshExpiration)
+                .signWith(key)
+                .compact();
+
+        return new IssuedToken(value, refreshExpiration);
     }
 
     public JwtClaims parse(String token) {
@@ -55,9 +67,14 @@ public class JwtTokenService {
                     .parseSignedClaims(token)
                     .getPayload();
 
+            TokenType type = toTokenType(payload.get(TYPE_CLAIM, String.class));
+            boolean access = type == TokenType.ACCESS;
+
             return new JwtClaims(
                     payload.getSubject(),
-                    toTokenType(payload.get(TYPE_CLAIM, String.class))
+                    type,
+                    access ? required(payload, ROLE_CLAIM, UserRole::valueOf) : null,
+                    access ? required(payload, STATUS_CLAIM, UserStatus::valueOf) : null
             );
         } catch (ExpiredJwtException e) {
             throw new BusinessException(AuthErrorCode.EXPIRED_TOKEN);
@@ -66,19 +83,23 @@ public class JwtTokenService {
         }
     }
 
-    private IssuedToken create(String publicId, TokenType type, Duration ttl) {
+    private <T> T required(Claims payload, String name, Function<String, T> mapper) {
+        String raw = payload.get(name, String.class);
+        if (raw == null) {
+            throw new IllegalArgumentException("missing claim: " + name);
+        }
+        return mapper.apply(raw);
+    }
+
+    private JwtBuilder base(String publicId, TokenType type, Duration ttl) {
         Instant now = clock.instant();
 
-        String value = Jwts.builder()
+        return Jwts.builder()
                 .subject(publicId)
                 .issuer(ISSUER)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plus(ttl)))
-                .claim(TYPE_CLAIM, type.name())
-                .signWith(key)
-                .compact();
-
-        return new IssuedToken(value, ttl);
+                .claim(TYPE_CLAIM, type.name());
     }
 
     private TokenType toTokenType(String raw) {

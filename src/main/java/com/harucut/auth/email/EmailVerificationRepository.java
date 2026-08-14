@@ -40,8 +40,12 @@ public class EmailVerificationRepository {
                 .set(key(VERIFIED_PREFIX, email), VERIFIED_VALUE, VERIFIED_TTL);
     }
 
-    public boolean consumeVerified(String email) {
-        return Boolean.TRUE.equals(redisTemplate.delete(key(VERIFIED_PREFIX, email)));
+    public boolean isVerified(String email) {
+        return Boolean.TRUE.equals(redisTemplate.hasKey(key(VERIFIED_PREFIX, email)));
+    }
+
+    public void removeVerified(String email) {
+        redisTemplate.delete(key(VERIFIED_PREFIX, email));
     }
 
     private String key(String prefix, String email) {

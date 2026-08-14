@@ -1,13 +1,12 @@
 package com.harucut.config;
 
+import com.harucut.auth.security.CustomAccessDeniedHandler;
 import com.harucut.auth.security.CustomAuthenticationEntryPoint;
-import com.harucut.auth.security.CustomUserDetailsService;
 import com.harucut.auth.security.JwtAuthenticationFilter;
 import com.harucut.auth.service.JwtTokenService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -49,7 +48,8 @@ public class SecurityConfig {
             "/api/terms",
             "/api/payments/webhook",
             "/swagger-ui/**",
-            "/v3/api-docs/**"
+            "/v3/api-docs/**",
+            "/error"
     };
 
     private static final RequestMatcher PUBLIC_MATCHER = new OrRequestMatcher(
@@ -58,8 +58,8 @@ public class SecurityConfig {
                     .toArray(RequestMatcher[]::new));
 
     private final JwtTokenService jwtTokenService;
-    private final CustomUserDetailsService userDetailsService;
     private final CustomAuthenticationEntryPoint authenticationEntryPoint;
+    private final CustomAccessDeniedHandler accessDeniedHandler;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -74,16 +74,20 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
 
                 .exceptionHandling(handling ->
-                        handling.authenticationEntryPoint(authenticationEntryPoint))
+                        handling
+                                .authenticationEntryPoint(authenticationEntryPoint)
+                                .accessDeniedHandler(accessDeniedHandler)
+                )
 
                 .addFilterBefore(
-                        new JwtAuthenticationFilter(PUBLIC_MATCHER, jwtTokenService, userDetailsService, authenticationEntryPoint),
+                        new JwtAuthenticationFilter(PUBLIC_MATCHER, jwtTokenService, authenticationEntryPoint),
                         UsernamePasswordAuthenticationFilter.class
                 )
 
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(PUBLIC_PATHS).permitAll()
-                        .anyRequest().authenticated()
+                        .requestMatchers("/api/auth/status").authenticated()
+                        .anyRequest().hasAnyRole("USER", "ADMIN")
                 );
 
         return http.build();

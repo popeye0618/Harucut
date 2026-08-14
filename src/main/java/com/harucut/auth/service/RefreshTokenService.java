@@ -7,9 +7,10 @@ import com.harucut.auth.jwt.IssuedToken;
 import com.harucut.auth.jwt.JwtClaims;
 import com.harucut.auth.jwt.TokenType;
 import com.harucut.common.exception.BusinessException;
+import com.harucut.user.entity.User;
+import com.harucut.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 @Slf4j
@@ -17,15 +18,13 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class RefreshTokenService {
 
-    private static final String KEY_PREFIX = "REFRESH_TOKEN:USER:";
-
-    private final StringRedisTemplate redisTemplate;
+    private final RefreshTokenRepository repository;
+    private final UserRepository userRepository;
     private final JwtTokenService jwtTokenService;
     private final CookieManager cookieManager;
 
     public void save(String publicId, IssuedToken refreshToken) {
-        redisTemplate.opsForValue()
-                .set(KEY_PREFIX + publicId, refreshToken.value(), refreshToken.ttl());
+        repository.save(publicId, refreshToken);
     }
 
     public AuthTokenCookies reissue(String refreshToken) {
@@ -35,34 +34,34 @@ public class RefreshTokenService {
             throw new BusinessException(AuthErrorCode.INVALID_TOKEN);
         }
 
-        verifyStored(claims.publicId(), refreshToken);
+        IssuedToken candidate = jwtTokenService.createRefreshToken(claims.publicId());
+        RotationResult result = repository.rotate(claims.publicId(), refreshToken, candidate);
 
-        IssuedToken newAccess = jwtTokenService.createAccessToken(claims.publicId());
-        IssuedToken newRefresh = jwtTokenService.createRefreshToken(claims.publicId());
-        save(claims.publicId(), newRefresh);
+        String rotated = switch (result) {
+            case RotationResult.Rotated r -> r.refreshToken();
+            case RotationResult.Graced g -> g.refreshToken();
+            case RotationResult.NoSession ignored ->
+                    throw new BusinessException(AuthErrorCode.INVALID_TOKEN);
+            case RotationResult.ReuseDetected ignored -> {
+                log.warn("[reissue] refresh 재사용 감지. 세션 끊음. publicId={}", claims.publicId());
+                throw new BusinessException(AuthErrorCode.INVALID_TOKEN);
+            }
+        };
+
+        User user = userRepository.findByPublicId(claims.publicId())
+                .orElseThrow(() -> new BusinessException(AuthErrorCode.INVALID_TOKEN));
+
+        IssuedToken newAccess = jwtTokenService.createAccessToken(
+                user.getPublicId(), user.getUserRole(), user.getUserStatus());
 
         return new AuthTokenCookies(
                 cookieManager.createTokenCookie(CookieManager.ACCESS_TOKEN, newAccess),
-                cookieManager.createTokenCookie(CookieManager.REFRESH_TOKEN, newRefresh)
+                cookieManager.createTokenCookie(CookieManager.REFRESH_TOKEN,
+                        new IssuedToken(rotated, candidate.ttl()))
         );
     }
 
     public void revoke(String publicId) {
-        redisTemplate.delete(KEY_PREFIX + publicId);
+        repository.delete(publicId);
     }
-
-    private void verifyStored(String publicId, String refreshToken) {
-        String stored = redisTemplate.opsForValue().get(KEY_PREFIX + publicId);
-
-        if (stored == null) {
-            throw new BusinessException(AuthErrorCode.INVALID_TOKEN);
-        }
-
-        if(!stored.equals(refreshToken)) {
-            log.warn("[reissue] refresh 재사용 감지. 세션 끊음. publicId={}", publicId);
-            redisTemplate.delete(KEY_PREFIX + publicId);
-            throw new BusinessException(AuthErrorCode.INVALID_TOKEN);
-        }
-    }
-
 }

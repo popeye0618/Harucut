@@ -11,6 +11,12 @@ spring:
   mail:
     host: ${MAIL_HOST}
     port: ${MAIL_PORT}
+    properties:
+      mail:
+        smtp:
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
 
 jwt:
   secret: ${JWT_SECRET_KEY}
