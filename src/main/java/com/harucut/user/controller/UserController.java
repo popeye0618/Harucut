@@ -2,6 +2,7 @@ package com.harucut.user.controller;
 
 import com.harucut.auth.security.AuthenticatedUser;
 import com.harucut.common.response.Response;
+import com.harucut.user.dto.ChangeProfileImageRequest;
 import com.harucut.user.dto.ChangeUsernameRequest;
 import com.harucut.user.dto.UserInfoResponse;
 import com.harucut.user.service.UserService;
@@ -30,6 +31,15 @@ public class UserController {
             @RequestBody @Valid ChangeUsernameRequest request
     ) {
         userService.changeUsername(principal.publicId(), request.username());
+        return Response.ok();
+    }
+
+    @PatchMapping("/change/profile-image")
+    public Response<Void> changeProfileImage(
+            @AuthenticationPrincipal AuthenticatedUser principal,
+            @RequestBody @Valid ChangeProfileImageRequest request
+    ) {
+        userService.changeProfileImage(principal.publicId(), request.s3Key());
         return Response.ok();
     }
 }

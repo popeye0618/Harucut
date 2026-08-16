@@ -4,6 +4,8 @@ import com.harucut.auth.cookie.CookieManager;
 import com.harucut.auth.security.CustomAccessDeniedHandler;
 import com.harucut.auth.security.CustomAuthenticationEntryPoint;
 import com.harucut.auth.service.JwtTokenService;
+import com.harucut.common.exception.BusinessException;
+import com.harucut.common.exception.GlobalErrorCode;
 import com.harucut.config.SecurityConfig;
 import com.harucut.support.FixedClockConfig;
 import com.harucut.support.SecurityBeansMockSupport;
@@ -27,6 +29,7 @@ import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.willThrow;
 
 @WebMvcTest(UserController.class)
 @Import({SecurityConfig.class, CustomAuthenticationEntryPoint.class, CustomAccessDeniedHandler.class,
@@ -214,6 +217,85 @@ class UserControllerTest extends SecurityBeansMockSupport {
         private String body(String username) {
             return """
                     {"username":"%s"}""".formatted(username);
+        }
+    }
+
+    @Nested
+    @DisplayName("PATCH /api/auth/user/change/profile-image")
+    class ChangeProfileImage {
+
+        private static final String PROFILE_IMAGE_URI = "/api/auth/user/change/profile-image";
+        private static final String MY_KEY = "uploads/users/" + PUBLIC_ID + "/profile/a1b2c3.png";
+
+        @Test
+        @DisplayName("정상 요청은 200이고 토큰의 publicId와 s3Key가 서비스에 전달된다")
+        void success() {
+            assertThat(patch(body(MY_KEY))).hasStatusOk();
+
+            then(userService).should().changeProfileImage(PUBLIC_ID, MY_KEY);
+        }
+
+        @Test
+        @DisplayName("서비스가 소유권 위반을 던지면 403 GEN-021 봉투로 나간다")
+        void foreignKeyForbidden() {
+            String foreignKey = "uploads/users/" + OTHER_PUBLIC_ID + "/profile/a.png";
+            willThrow(new BusinessException(GlobalErrorCode.FORBIDDEN))
+                    .given(userService).changeProfileImage(PUBLIC_ID, foreignKey);
+
+            assertThat(patch(body(foreignKey)))
+                    .hasStatus(HttpStatus.FORBIDDEN)
+                    .bodyJson()
+                    .hasPathSatisfying("$.code", c -> assertThat(c).isEqualTo("GEN-021"));
+        }
+
+        @Test
+        @DisplayName("s3Key가 빈 문자열이면 GEN-003이고 서비스가 호출되지 않는다")
+        void blankKey() {
+            assertThat(patch(body("")))
+                    .hasStatus(HttpStatus.BAD_REQUEST)
+                    .bodyJson()
+                    .hasPathSatisfying("$.code", c -> assertThat(c).isEqualTo("GEN-003"))
+                    .hasPathSatisfying("$.data[0].field", f -> assertThat(f).isEqualTo("s3Key"));
+
+            then(userService).shouldHaveNoInteractions();
+        }
+
+        @Test
+        @DisplayName("본문이 없으면 GEN-006이고 서비스가 호출되지 않는다")
+        void missingBody() {
+            assertThat(mockMvc.patch().uri(PROFILE_IMAGE_URI)
+                    .cookie(accessCookie(PUBLIC_ID))
+                    .contentType(MediaType.APPLICATION_JSON))
+                    .hasStatus(HttpStatus.BAD_REQUEST)
+                    .bodyJson()
+                    .hasPathSatisfying("$.code", c -> assertThat(c).isEqualTo("GEN-006"));
+
+            then(userService).shouldHaveNoInteractions();
+        }
+
+        @Test
+        @DisplayName("토큰이 없으면 401 AUTH-010이고 서비스가 호출되지 않는다")
+        void unauthenticated() {
+            assertThat(mockMvc.patch().uri(PROFILE_IMAGE_URI)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(body(MY_KEY)))
+                    .hasStatus(HttpStatus.UNAUTHORIZED)
+                    .bodyJson()
+                    .hasPathSatisfying("$.code", c -> assertThat(c).isEqualTo("AUTH-010"));
+
+            then(userService).shouldHaveNoInteractions();
+        }
+
+        private MockMvcTester.MockMvcRequestBuilder patch(String json) {
+            return mockMvc.patch().uri(PROFILE_IMAGE_URI)
+                    .cookie(accessCookie(PUBLIC_ID))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(json);
+        }
+
+        private String body(String s3Key) {
+            return """
+                    {"s3Key":"%s"}""".formatted(s3Key);
         }
     }
 
