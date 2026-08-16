@@ -6,9 +6,11 @@ import com.harucut.auth.dto.RegisterRequest;
 import com.harucut.user.entity.User;
 import com.harucut.user.enums.Provider;
 import com.harucut.auth.exception.AuthErrorCode;
+import com.harucut.user.event.UserRegisterEvent;
 import com.harucut.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -22,6 +24,7 @@ public class RegisterService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final EmailVerificationService emailVerificationService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public void register(RegisterRequest request) {
@@ -43,6 +46,8 @@ public class RegisterService {
             log.warn("[register] 저장 중 제약 위반. publicId={}", user.getPublicId(), e);
             throw new BusinessException(AuthErrorCode.EMAIL_ALREADY_IN_USE);
         }
+
+        eventPublisher.publishEvent(new UserRegisterEvent(user.getId()));
 
         emailVerificationService.clearVerified(request.email());
     }

@@ -2,6 +2,8 @@ package com.harucut.user.controller;
 
 import com.harucut.auth.security.AuthenticatedUser;
 import com.harucut.common.response.Response;
+import com.harucut.subscription.dto.SubscriptionUsageResponse;
+import com.harucut.subscription.service.SubscriptionUsageService;
 import com.harucut.user.dto.ChangeProfileImageRequest;
 import com.harucut.user.dto.ChangeUsernameRequest;
 import com.harucut.user.dto.UserInfoResponse;
@@ -17,6 +19,7 @@ import org.springframework.web.bind.annotation.*;
 public class UserController {
 
     private final UserService userService;
+    private final SubscriptionUsageService subscriptionUsageService;
 
     @GetMapping("/info")
     public Response<UserInfoResponse> info(@AuthenticationPrincipal AuthenticatedUser principal) {
@@ -41,5 +44,10 @@ public class UserController {
     ) {
         userService.changeProfileImage(principal.publicId(), request.s3Key());
         return Response.ok();
+    }
+
+    @GetMapping("/subscription/usage")
+    public Response<SubscriptionUsageResponse> subscriptionUsage(@AuthenticationPrincipal AuthenticatedUser principal) {
+        return Response.ok(subscriptionUsageService.getUsage(principal.publicId()));
     }
 }

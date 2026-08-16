@@ -1,7 +1,11 @@
 plugins {
     id 'java'
+    id 'jacoco'
     id 'org.springframework.boot' version '4.1.0'
     id 'io.spring.dependency-management' version '1.1.7'
+
+    // 뮤테이션 테스팅. pit-viper 스킬이 요구하는 두 신호원 중 하나다.
+    id 'info.solidsoft.pitest' version '1.19.0'
 }
 
 group = 'com'
@@ -46,8 +50,51 @@ dependencies {
     testCompileOnly 'org.projectlombok:lombok'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     testAnnotationProcessor 'org.projectlombok:lombok'
+
+    // pitest 는 JUnit 4 시절에 만들어졌다. JUnit 5 테스트를 인식시키려면 이 플러그인이 필요하다.
+    pitest 'org.pitest:pitest-junit5-plugin:1.2.3'
 }
 
 tasks.named('test') {
     useJUnitPlatform()
+    finalizedBy jacocoTestReport
+}
+
+jacoco {
+    toolVersion = '0.8.13'
+}
+
+jacocoTestReport {
+    dependsOn test
+
+    reports {
+        // XML 은 기본으로 꺼져 있다. 스크립트가 읽는 것은 XML 이다.
+        xml.required = true
+        html.required = true
+    }
+}
+
+pitest {
+    pitestVersion = '1.19.1'
+    junit5PluginVersion = '1.2.3'
+
+    // 기본값은 전체다. 실전에서는 스킬의 scope.sh 가 변경 클래스만 넣어 비용을 깎는다:
+    //   ./gradlew pitest -PpitScope=$(scope.sh main --pitest)
+    targetClasses = findProperty('pitScope')?.toString()?.tokenize(',') ?: ['com.harucut.*']
+
+    // ⚠️ 반드시 명시한다. 안 주면 pitest 가 targetClasses 패턴으로 테스트를 고르기 때문에,
+    // 스코프를 좁히는 순간 실행할 테스트가 0개가 되어 전부 NO_COVERAGE 로 나온다.
+    targetTests = ['com.harucut.*']
+
+    excludedClasses = ['*.*Config', '*Application', '*.dto.*', '*.entity.*', '*.enums.*',
+                       '*.repository.*', '*.controller.*', '*.exception.*']
+    excludedMethods = ['toString', 'hashCode', 'equals']
+    avoidCallsTo = ['org.slf4j']
+
+    // DEFAULTS 에는 NEGATE_CONDITIONALS 가 없다. 조건 반전은 테스트 구멍의 대표 유형이라 명시한다.
+    mutators = ['DEFAULTS', 'NEGATE_CONDITIONALS']
+
+    outputFormats = ['XML', 'HTML']
+    timestampedReports = false
+    mutationThreshold = 0
 }

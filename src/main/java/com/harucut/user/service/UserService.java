@@ -4,12 +4,18 @@ import com.harucut.common.exception.BusinessException;
 import com.harucut.common.exception.GlobalErrorCode;
 import com.harucut.storage.service.FileStorageService;
 import com.harucut.storage.util.S3Keys;
+import com.harucut.subscription.config.PlanPricingProperties;
+import com.harucut.subscription.enums.PlanTier;
+import com.harucut.subscription.repository.UserSubscriptionRepository;
 import com.harucut.user.dto.UserInfoResponse;
 import com.harucut.user.entity.User;
 import com.harucut.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Clock;
+import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
@@ -18,11 +24,15 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final FileStorageService fileStorageService;
+    private final UserSubscriptionRepository userSubscriptionRepository;
+    private final PlanPricingProperties planPricingProperties;
+    private final Clock clock;
 
     public UserInfoResponse getUserInfo(String publicId) {
         User user = getUser(publicId);
         String profileUrl = fileStorageService.generatePresignedGetUrl(user.getProfileImageUrl());
-        return UserInfoResponse.from(user, profileUrl, "BASIC", 0);
+        PlanTier planTier = resolveEffectiveTier(user.getId());
+        return UserInfoResponse.from(user, profileUrl, planTier.name(), planPricingProperties.priceOf(planTier));
     }
 
     @Transactional
@@ -40,6 +50,13 @@ public class UserService {
             throw new BusinessException(GlobalErrorCode.FORBIDDEN);
         }
         user.changeProfileImageUrl(key);
+    }
+
+    // 표시 등급도 정책·구독 API와 같은 effectiveTier 기준이다 — 화면마다 다른 등급이 보이면 안 된다
+    private PlanTier resolveEffectiveTier(Long userId) {
+        return userSubscriptionRepository.findByUserId(userId)
+                .map(subscription -> subscription.effectiveTier(LocalDateTime.now(clock)))
+                .orElse(PlanTier.BASIC);
     }
 
     private User getUser(String publicId) {

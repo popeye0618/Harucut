@@ -42,3 +42,5 @@ out/
 docs/
 .env
 CLAUDE.md
+.pit-viper
+viper
