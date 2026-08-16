@@ -34,3 +34,8 @@ jwt:
 
 cookie:
   secure: false
+
+cloud:
+  aws:
+    s3:
+      bucket: harucut-test

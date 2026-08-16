@@ -11,12 +11,12 @@ public record UserInfoResponse(
         String planTier,
         int monthlyPrice
 ) {
-    public static UserInfoResponse from(User user, String planTier, int monthlyPrice) {
+    public static UserInfoResponse from(User user, String profileUrl, String planTier, int monthlyPrice) {
         return new UserInfoResponse(
                 user.getPublicId(),
                 user.getEmail(),
                 user.getUsername(),
-                user.getProfileImageUrl(),
+                profileUrl,
                 user.getProvider().name(),
                 planTier,
                 monthlyPrice
