@@ -86,8 +86,11 @@ public class UserMediaService {
     }
 
     private UserMediaResponse toResponse(UserMedia media) {
+        // 같은 파일에 URL이 둘인 이유 — viewUrl은 <img>용 plain GET,
+        // downloadUrl은 attachment disposition이라 브라우저가 저장 대화상자를 띄운다
+        String viewUrl = fileStorageService.generatePresignedGetUrl(media.getS3Key());
         String downloadUrl = fileStorageService
                 .generatePresignedDownloadUrl(media.getS3Key(), media.getDisplayName());
-        return UserMediaResponse.of(media, downloadUrl);
+        return UserMediaResponse.of(media, viewUrl, downloadUrl);
     }
 }

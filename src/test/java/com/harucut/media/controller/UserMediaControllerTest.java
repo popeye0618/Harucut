@@ -64,6 +64,8 @@ class UserMediaControllerTest extends SecurityBeansMockSupport {
                 .hasStatusOk()
                 .bodyJson()
                 .hasPathSatisfying("$.data.content[0].mediaId", id -> assertThat(id).isEqualTo(7))
+                .hasPathSatisfying("$.data.content[0].viewUrl",
+                        url -> assertThat(url).isEqualTo("https://view.example/p.png"))
                 .hasPathSatisfying("$.data.totalElements", total -> assertThat(total).isEqualTo(1));
     }
 
@@ -191,6 +193,7 @@ class UserMediaControllerTest extends SecurityBeansMockSupport {
 
     private static UserMediaResponse mediaResponse() {
         return new UserMediaResponse(7L, "uploads/users/abc/fourcuts/p.png", "이름.png",
-                "https://signed.example/p.png", LocalDateTime.of(2026, 7, 20, 10, 0));
+                "https://view.example/p.png", "https://signed.example/p.png",
+                LocalDateTime.of(2026, 7, 20, 10, 0));
     }
 }
