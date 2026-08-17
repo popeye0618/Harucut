@@ -1,19 +1,16 @@
 package com.harucut.frame.service;
 
 import com.harucut.frame.enums.ComponentType;
-import com.harucut.storage.event.S3DeleteEvent;
 import com.harucut.storage.service.FileStorageService;
+import com.harucut.storage.service.S3Deleter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.context.ApplicationEventPublisher;
 
-import java.util.Arrays;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -34,13 +31,13 @@ class FrameAssetManagerTest {
     private FileStorageService fileStorageService;
 
     @Mock
-    private ApplicationEventPublisher eventPublisher;
+    private S3Deleter s3Deleter;
 
     private FrameAssetManager assetManager;
 
     @BeforeEach
     void setUp() {
-        assetManager = new FrameAssetManager(fileStorageService, eventPublisher);
+        assetManager = new FrameAssetManager(fileStorageService, s3Deleter);
     }
 
     @Nested
@@ -120,26 +117,14 @@ class FrameAssetManagerTest {
         }
     }
 
-    @Nested
-    @DisplayName("deleteAfterCommit — 삭제 예약")
-    class DeleteAfterCommit {
+    // 거르기·발행 검증은 S3DeleterTest로 이사했다 — 여기는 위임만 확인한다
+    @Test
+    @DisplayName("deleteAfterCommit은 storage 공용 부품에 그대로 위임한다")
+    void delegatesToS3Deleter() {
+        List<String> keys = List.of(KEY, EXTERNAL_URL);
 
-        @Test
-        @DisplayName("null·빈 값·외부 URL을 거르고 중복을 제거해 이벤트로 발행한다")
-        void filtersAndDeduplicates() {
-            assetManager.deleteAfterCommit(Arrays.asList(KEY, null, "  ", EXTERNAL_URL, KEY));
+        assetManager.deleteAfterCommit(keys);
 
-            ArgumentCaptor<S3DeleteEvent> captor = ArgumentCaptor.forClass(S3DeleteEvent.class);
-            then(eventPublisher).should().publishEvent(captor.capture());
-            assertThat(captor.getValue().keys()).containsExactly(KEY);
-        }
-
-        @Test
-        @DisplayName("지울 관리 key가 하나도 없으면 이벤트를 발행하지 않는다")
-        void nothingManagedNoPublish() {
-            assetManager.deleteAfterCommit(Arrays.asList(null, "  ", EXTERNAL_URL));
-
-            then(eventPublisher).shouldHaveNoInteractions();
-        }
+        then(s3Deleter).should().deleteAfterCommit(keys);
     }
 }
