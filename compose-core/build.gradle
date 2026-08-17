@@ -1,0 +1,29 @@
+// 서버(루트)와 Lambda(compose-lambda)가 함께 쓰는 합성 코어 — 렌더러와 스펙 타입.
+// 스프링을 모른다: 여기 스프링이 들어오는 순간 Lambda 배포물에도 끌려간다
+plugins {
+    id 'java-library'
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // 버전은 서버와 같은 Boot BOM으로 맞춘다 — jackson 버전이 어긋나면 직렬화가 미묘하게 달라진다
+    api platform('org.springframework.boot:spring-boot-dependencies:4.1.0')
+    api 'com.fasterxml.jackson.core:jackson-annotations'   // BackgroundAttributes의 @JsonTypeInfo용
+
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testImplementation 'org.assertj:assertj-core'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}

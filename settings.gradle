@@ -1,1 +1,4 @@
 rootProject.name = 'harucut'
+
+// 서버(루트)와 Lambda가 공유하는 그리기 코드 — "로컬 픽셀 = 운영 픽셀"을 빌드 구조로 강제한다
+include 'compose-core'

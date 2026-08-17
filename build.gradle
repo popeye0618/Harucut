@@ -23,6 +23,7 @@ repositories {
 }
 
 dependencies {
+    implementation project(':compose-core')   // 렌더러·스펙 타입 — Lambda와 공유하는 합성 코어
     implementation 'org.springframework.boot:spring-boot-h2console'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-mail'

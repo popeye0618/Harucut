@@ -2,7 +2,6 @@ package com.harucut.media.compose;
 
 import com.harucut.frame.attributes.BackgroundAttributes;
 import com.harucut.frame.layout.FrameLayout;
-import org.springframework.stereotype.Component;
 
 import javax.imageio.ImageIO;
 import java.awt.AlphaComposite;
@@ -32,8 +31,8 @@ import java.util.Map;
 // S3를 모른다 — 이미지 가져오기(다운로드)와 결과 내보내기(업로드)는 호출자 몫이다.
 // 그래서 픽셀 테스트가 S3 없이 돌고, 이 코드가 그대로 Lambda 함수 안으로 들어간다.
 // 수식·순서·상수는 프론트 composeFrame.ts(drawFrameOnce)와 1:1이다 —
-// 어긋나면 예외 없이 결과물만 편집 화면 미리보기와 틀어진다
-@Component
+// 어긋나면 예외 없이 결과물만 편집 화면 미리보기와 틀어진다.
+// 공유 모듈(compose-core) 소속이라 스프링 애노테이션이 없다 — 빈 등록은 앱의 ComposeConfig 몫
 public class FourcutRenderer {
 
     // 프론트 DEFAULT_FRAME_BACKGROUND_COLOR — IMAGE 배경 아래에 깔리는 기본색
