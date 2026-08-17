@@ -101,9 +101,11 @@ public class FrameService {
     }
 
     private void validateOwner(Frame frame, User user) {
-        // 시스템 프레임(user=null)도 여기서 걸린다 — 사용자 API로는 수정·삭제 불가
+        // 시스템 프레임(user=null)도 여기서 걸린다 — 사용자 API로는 수정·삭제 불가.
+        // 남의 프레임은 403이 아니라 404 — id가 순차 Long이라 403을 주면 존재 여부가 열거된다.
+        // 진짜 없는 프레임(getFrameById)과 같은 코드·기본 메시지여야 응답으로 구분이 안 된다
         if (frame.getUser() == null || !frame.getUser().getId().equals(user.getId())) {
-            throw new BusinessException(GlobalErrorCode.FORBIDDEN);
+            throw new BusinessException(GlobalErrorCode.NOT_FOUND);
         }
     }
 
