@@ -7,6 +7,9 @@ import com.harucut.auth.service.JwtTokenService;
 import com.harucut.common.exception.BusinessException;
 import com.harucut.common.exception.GlobalErrorCode;
 import com.harucut.config.SecurityConfig;
+import com.harucut.subscription.dto.SubscriptionUsageResponse;
+import com.harucut.subscription.enums.PlanTier;
+import com.harucut.subscription.service.SubscriptionUsageService;
 import com.harucut.support.FixedClockConfig;
 import com.harucut.support.SecurityBeansMockSupport;
 import com.harucut.user.dto.UserInfoResponse;
@@ -40,6 +43,7 @@ class UserControllerTest extends SecurityBeansMockSupport {
 
     private static final String INFO_URI = "/api/auth/user/info";
     private static final String USERNAME_URI = "/api/auth/user/change/username";
+    private static final String USAGE_URI = "/api/auth/user/subscription/usage";
 
     private static final String PUBLIC_ID = "AbCdEf12Gh";
     private static final String OTHER_PUBLIC_ID = "ZzYyXx98Ww";
@@ -52,6 +56,9 @@ class UserControllerTest extends SecurityBeansMockSupport {
 
     @MockitoBean
     private UserService userService;
+
+    @MockitoBean
+    private SubscriptionUsageService subscriptionUsageService;
 
     @Nested
     @DisplayName("GET /api/auth/user/info")
@@ -296,6 +303,52 @@ class UserControllerTest extends SecurityBeansMockSupport {
         private String body(String s3Key) {
             return """
                     {"s3Key":"%s"}""".formatted(s3Key);
+        }
+    }
+
+    @Nested
+    @DisplayName("GET /api/auth/user/subscription/usage")
+    class SubscriptionUsage {
+
+        @Test
+        @DisplayName("PLUS 사용량이 계약 필드명 그대로 직렬화된다")
+        void plusUsage() {
+            given(subscriptionUsageService.getUsage(PUBLIC_ID))
+                    .willReturn(new SubscriptionUsageResponse(PlanTier.PLUS, 3, 1, 2, false));
+
+            assertThat(mockMvc.get().uri(USAGE_URI).cookie(accessCookie(PUBLIC_ID)))
+                    .hasStatusOk()
+                    .bodyJson()
+                    .hasPathSatisfying("$.data.planTier", p -> assertThat(p).isEqualTo("PLUS"))
+                    .hasPathSatisfying("$.data.frameRetentionLimit", l -> assertThat(l).isEqualTo(3))
+                    .hasPathSatisfying("$.data.frameRetentionUsedCount", u -> assertThat(u).isEqualTo(1))
+                    .hasPathSatisfying("$.data.frameRetentionRemainingCount", r -> assertThat(r).isEqualTo(2))
+                    .hasPathSatisfying("$.data.frameRetentionUnlimited", u -> assertThat(u).isEqualTo(false));
+        }
+
+        @Test
+        @DisplayName("PRO는 한도·잔여가 -1로 나간다 — 무제한 wire 규약")
+        void proUsage() {
+            given(subscriptionUsageService.getUsage(PUBLIC_ID))
+                    .willReturn(new SubscriptionUsageResponse(PlanTier.PRO, -1, 10, -1, true));
+
+            assertThat(mockMvc.get().uri(USAGE_URI).cookie(accessCookie(PUBLIC_ID)))
+                    .hasStatusOk()
+                    .bodyJson()
+                    .hasPathSatisfying("$.data.frameRetentionLimit", l -> assertThat(l).isEqualTo(-1))
+                    .hasPathSatisfying("$.data.frameRetentionRemainingCount", r -> assertThat(r).isEqualTo(-1))
+                    .hasPathSatisfying("$.data.frameRetentionUnlimited", u -> assertThat(u).isEqualTo(true));
+        }
+
+        @Test
+        @DisplayName("토큰이 없으면 401 AUTH-010이고 서비스가 호출되지 않는다")
+        void unauthenticated() {
+            assertThat(mockMvc.get().uri(USAGE_URI))
+                    .hasStatus(HttpStatus.UNAUTHORIZED)
+                    .bodyJson()
+                    .hasPathSatisfying("$.code", c -> assertThat(c).isEqualTo("AUTH-010"));
+
+            then(subscriptionUsageService).shouldHaveNoInteractions();
         }
     }
 

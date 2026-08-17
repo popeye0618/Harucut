@@ -9,6 +9,7 @@ import com.harucut.user.enums.Provider;
 import com.harucut.user.enums.UserRole;
 import com.harucut.user.enums.UserStatus;
 import com.harucut.auth.exception.AuthErrorCode;
+import com.harucut.user.event.UserRegisterEvent;
 import com.harucut.user.repository.UserRepository;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.*;
@@ -17,6 +18,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -41,13 +43,16 @@ class RegisterServiceTest {
     @Mock
     private EmailVerificationService emailVerificationService;
 
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
+
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder(4);
 
     private RegisterService registerService;
 
     @BeforeEach
     void setUp() {
-        registerService = new RegisterService(userRepository, passwordEncoder, emailVerificationService);
+        registerService = new RegisterService(userRepository, passwordEncoder, emailVerificationService, eventPublisher);
     }
 
     @Nested
@@ -94,6 +99,7 @@ class RegisterServiceTest {
                     .isEqualTo(AuthErrorCode.EMAIL_ALREADY_IN_USE);
 
             then(userRepository).should(never()).save(any(User.class));
+            then(eventPublisher).shouldHaveNoInteractions();
         }
 
         @Test
@@ -108,6 +114,7 @@ class RegisterServiceTest {
             .isEqualTo(AuthErrorCode.EMAIL_ALREADY_IN_USE);
 
             then(emailVerificationService).should(never()).clearVerified(any());
+            then(eventPublisher).shouldHaveNoInteractions();
         }
 
         @Test
@@ -123,6 +130,18 @@ class RegisterServiceTest {
                     .isEqualTo(AuthErrorCode.EMAIL_NOT_VERIFIED);
 
             then(userRepository).should(never()).save(any(User.class));
+        }
+
+        @Test
+        @DisplayName("저장에 성공한 뒤에 가입 이벤트를 발행한다")
+        void publishesEventAfterSave() {
+            given(userRepository.existsByProviderAndEmail(Provider.HARUCUT, "user@harucut.com")).willReturn(false);
+
+            registerService.register(request());
+
+            InOrder inOrder = inOrder(userRepository, eventPublisher);
+            inOrder.verify(userRepository).save(any(User.class));
+            inOrder.verify(eventPublisher).publishEvent(any(UserRegisterEvent.class));
         }
 
         @Test

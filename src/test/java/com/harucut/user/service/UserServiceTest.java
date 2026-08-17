@@ -3,6 +3,10 @@ package com.harucut.user.service;
 import com.harucut.common.exception.BusinessException;
 import com.harucut.common.exception.GlobalErrorCode;
 import com.harucut.storage.service.FileStorageService;
+import com.harucut.subscription.config.PlanPricingProperties;
+import com.harucut.subscription.entity.UserSubscription;
+import com.harucut.subscription.enums.PlanTier;
+import com.harucut.subscription.repository.UserSubscriptionRepository;
 import com.harucut.support.UserFixtures;
 import com.harucut.user.dto.UserInfoResponse;
 import com.harucut.user.entity.User;
@@ -15,7 +19,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
+import java.time.Clock;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -27,6 +35,9 @@ import static org.mockito.BDDMockito.given;
 class UserServiceTest {
 
     private static final String UNKNOWN_PUBLIC_ID = "NoSuchUser1";
+    private static final Long USER_ID = 1L;
+    private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
+    private static final LocalDateTime NOW = LocalDateTime.of(2026, 8, 16, 12, 0);
 
     @Mock
     private UserRepository userRepository;
@@ -34,11 +45,16 @@ class UserServiceTest {
     @Mock
     private FileStorageService fileStorageService;
 
+    @Mock
+    private UserSubscriptionRepository userSubscriptionRepository;
+
     private UserService userService;
 
     @BeforeEach
     void setUp() {
-        userService = new UserService(userRepository, fileStorageService);
+        Clock fixedClock = Clock.fixed(NOW.atZone(SEOUL).toInstant(), SEOUL);
+        userService = new UserService(userRepository, fileStorageService, userSubscriptionRepository,
+                new PlanPricingProperties(0, 3900, 9900), fixedClock);
     }
 
     @Nested
@@ -68,9 +84,41 @@ class UserServiceTest {
         }
 
         @Test
-        @DisplayName("구독이 없는 동안 planTier는 BASIC, monthlyPrice는 0으로 고정된다")
+        @DisplayName("구독 행이 없으면 BASIC / 0원으로 폴백한다")
         void returnsFixedBasicPlan() {
             User user = stubFound(localUser());
+
+            UserInfoResponse response = userService.getUserInfo(user.getPublicId());
+
+            assertThat(response.planTier()).isEqualTo("BASIC");
+            assertThat(response.monthlyPrice()).isZero();
+        }
+
+        @Test
+        @DisplayName("PLUS 구독자는 PLUS / 3,900원이다")
+        void returnsPlusPlanWithPrice() {
+            User user = stubFound(localUser());
+            ReflectionTestUtils.setField(user, "id", USER_ID);
+            UserSubscription subscription = UserSubscription.createBasic(USER_ID);
+            subscription.activatePaid(PlanTier.PLUS,
+                    LocalDateTime.of(2026, 8, 1, 0, 0), LocalDateTime.of(2026, 9, 1, 0, 0));
+            given(userSubscriptionRepository.findByUserId(USER_ID)).willReturn(Optional.of(subscription));
+
+            UserInfoResponse response = userService.getUserInfo(user.getPublicId());
+
+            assertThat(response.planTier()).isEqualTo("PLUS");
+            assertThat(response.monthlyPrice()).isEqualTo(3900);
+        }
+
+        @Test
+        @DisplayName("공백기 — 주기가 끝난 PLUS는 user/info에서도 BASIC / 0원이다")
+        void gapPeriodShowsBasic() {
+            User user = stubFound(localUser());
+            ReflectionTestUtils.setField(user, "id", USER_ID);
+            UserSubscription subscription = UserSubscription.createBasic(USER_ID);
+            subscription.activatePaid(PlanTier.PLUS,
+                    LocalDateTime.of(2026, 7, 1, 0, 0), LocalDateTime.of(2026, 8, 1, 0, 0));
+            given(userSubscriptionRepository.findByUserId(USER_ID)).willReturn(Optional.of(subscription));
 
             UserInfoResponse response = userService.getUserInfo(user.getPublicId());
 
