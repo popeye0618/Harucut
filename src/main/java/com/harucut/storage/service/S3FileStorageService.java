@@ -7,6 +7,7 @@ import com.harucut.storage.enums.UploadType;
 import com.harucut.storage.strategy.UploadPathStrategy;
 import com.harucut.storage.util.ContentDispositions;
 import org.springframework.stereotype.Service;
+import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
@@ -92,6 +93,19 @@ public class S3FileStorageService implements FileStorageService {
     @Override
     public void delete(String key) {
         s3Client.deleteObject(DeleteObjectRequest.builder().bucket(bucket).key(key).build());
+    }
+
+    @Override
+    public byte[] downloadBytes(String key) {
+        return s3Client.getObjectAsBytes(
+                GetObjectRequest.builder().bucket(bucket).key(key).build()).asByteArray();
+    }
+
+    @Override
+    public void uploadBytes(String key, byte[] bytes, String contentType) {
+        s3Client.putObject(
+                PutObjectRequest.builder().bucket(bucket).key(key).contentType(contentType).build(),
+                RequestBody.fromBytes(bytes));
     }
 
     private String presignGet(GetObjectRequest getObjectRequest) {

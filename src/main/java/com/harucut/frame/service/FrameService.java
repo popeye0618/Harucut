@@ -58,13 +58,20 @@ public class FrameService {
 
     @Transactional(readOnly = true)
     public FrameResponse getFrame(String publicId, Long frameId) {
-        User user = getUser(publicId);
+        return frameComponentAssembler.toFrameResponse(
+                getComposableFrame(getUser(publicId), frameId));
+    }
+
+    // 네컷 합성이 쓸 프레임 — 단건 조회와 정확히 같은 관문을 통과한 엔티티를 내준다.
+    // 규칙이 두 벌이면 "목록엔 안 보이는데 합성은 되는" 구멍이 생긴다
+    @Transactional(readOnly = true)
+    public Frame getComposableFrame(User user, Long frameId) {
         Frame frame = getFrameById(frameId);
         // 시스템 프레임은 소유자·보관 기간·캡 전부 우회 — 누구나 읽는다
         if (!frame.isSystem()) {
             assertReadable(frame, user);
         }
-        return frameComponentAssembler.toFrameResponse(frame);
+        return frame;
     }
 
     public FrameResponse updateFrame(String publicId, Long frameId, FrameCreateRequest request) {
