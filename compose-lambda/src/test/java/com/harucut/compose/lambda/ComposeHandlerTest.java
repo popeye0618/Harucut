@@ -29,6 +29,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -45,6 +46,7 @@ class ComposeHandlerTest {
 
     private static final String BUCKET = "harucut-test";
     private static final String RESULT_KEY = "uploads/users/abc/fourcuts/job-5.png";
+    private static final String THUMB_KEY = "uploads/users/abc/fourcuts/job-5-thumb.jpg";
     private static final List<String> SOURCE_KEYS = List.of(
             "uploads/u/1.jpg", "uploads/u/2.jpg", "uploads/u/3.jpg", "uploads/u/4.jpg");
 
@@ -66,15 +68,45 @@ class ComposeHandlerTest {
 
         ArgumentCaptor<PutObjectRequest> requestCaptor = ArgumentCaptor.captor();
         ArgumentCaptor<RequestBody> bodyCaptor = ArgumentCaptor.captor();
-        then(s3Client).should().putObject(requestCaptor.capture(), bodyCaptor.capture());
-        assertThat(requestCaptor.getValue().bucket()).isEqualTo(BUCKET);
-        assertThat(requestCaptor.getValue().key()).isEqualTo(RESULT_KEY);
-        assertThat(requestCaptor.getValue().contentType()).isEqualTo("image/png");
+        then(s3Client).should(times(2)).putObject(requestCaptor.capture(), bodyCaptor.capture());
+        PutObjectRequest resultPut = requestCaptor.getAllValues().get(0);
+        assertThat(resultPut.bucket()).isEqualTo(BUCKET);
+        assertThat(resultPut.key()).isEqualTo(RESULT_KEY);
+        assertThat(resultPut.contentType()).isEqualTo("image/png");
         BufferedImage result = ImageIO.read(
-                bodyCaptor.getValue().contentStreamProvider().newStream());
+                bodyCaptor.getAllValues().get(0).contentStreamProvider().newStream());
         assertThat(result.getWidth()).isEqualTo(40);
         assertThat(result.getHeight()).isEqualTo(40);
+        // 두 번째 업로드가 썸네일 — 40px 캔버스는 512보다 작아 크기가 그대로다
+        PutObjectRequest thumbPut = requestCaptor.getAllValues().get(1);
+        assertThat(thumbPut.key()).isEqualTo(THUMB_KEY);
+        assertThat(thumbPut.contentType()).isEqualTo("image/jpeg");
+        BufferedImage thumb = ImageIO.read(
+                bodyCaptor.getAllValues().get(1).contentStreamProvider().newStream());
+        assertThat(thumb.getWidth()).isEqualTo(40);
         assertThat(output.toString(StandardCharsets.UTF_8)).isEqualTo("{\"ok\":true}");
+    }
+
+    @Test
+    @DisplayName("thumbnailKey 없는 옛 payload는 원본만 올린다 — 서버보다 먼저 배포해도 안전")
+    void legacyPayloadWithoutThumbnailKey() throws IOException {
+        ComposeSpec spec = new ComposeSpec(40, 40,
+                new BackgroundAttributes.Color("#FFFFFF"),
+                fourSlots(), List.of(false, false, false, false), List.of());
+        given(s3Client.getObjectAsBytes(any(GetObjectRequest.class)))
+                .willReturn(ResponseBytes.fromByteArray(
+                        GetObjectResponse.builder().build(), solidPng(10, 10, Color.RED)));
+        // 필드 자체가 없는 JSON — 썸네일 도입 전 서버의 wire 포맷 그대로
+        String legacyJson = MAPPER.writeValueAsString(Map.of(
+                "bucket", BUCKET, "spec", spec, "sourceKeys", SOURCE_KEYS, "resultKey", RESULT_KEY));
+
+        new ComposeHandler(s3Client).handleRequest(
+                new ByteArrayInputStream(legacyJson.getBytes(StandardCharsets.UTF_8)),
+                new ByteArrayOutputStream(), null);
+
+        ArgumentCaptor<PutObjectRequest> captor = ArgumentCaptor.captor();
+        then(s3Client).should(times(1)).putObject(captor.capture(), any(RequestBody.class));
+        assertThat(captor.getValue().key()).isEqualTo(RESULT_KEY);
     }
 
     @Test
@@ -105,7 +137,7 @@ class ComposeHandlerTest {
 
     private static ByteArrayInputStream payloadStream(ComposeSpec spec) {
         String json = MAPPER.writeValueAsString(
-                new ComposeLambdaPayload(BUCKET, spec, SOURCE_KEYS, RESULT_KEY));
+                new ComposeLambdaPayload(BUCKET, spec, SOURCE_KEYS, RESULT_KEY, THUMB_KEY));
         return new ByteArrayInputStream(json.getBytes(StandardCharsets.UTF_8));
     }
 

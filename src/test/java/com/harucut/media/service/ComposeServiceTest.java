@@ -58,6 +58,8 @@ class ComposeServiceTest {
             "uploads/users/AbCdEf12Gh01/fourcuts/sources/4.jpg");
     private static final String RESULT_KEY =
             "uploads/users/AbCdEf12Gh01/fourcuts/job-" + JOB_ID + ".png";
+    private static final String THUMB_KEY =
+            "uploads/users/AbCdEf12Gh01/fourcuts/job-" + JOB_ID + "-thumb.jpg";
 
     @Mock
     private UserRepository userRepository;
@@ -124,6 +126,7 @@ class ComposeServiceTest {
             ComposeRequestedEvent event = captor.getValue();
             assertThat(event.jobId()).isEqualTo(JOB_ID);
             assertThat(event.resultKey()).isEqualTo(RESULT_KEY);
+            assertThat(event.thumbnailKey()).isEqualTo(THUMB_KEY);
             assertThat(event.sourceKeys()).containsExactlyElementsOf(SOURCE_KEYS);
             assertThat(event.spec()).isEqualTo(spec);
         }
@@ -218,11 +221,12 @@ class ComposeServiceTest {
                 return media;
             });
 
-            composeService.completeJob(JOB_ID, RESULT_KEY);
+            composeService.completeJob(JOB_ID, RESULT_KEY, THUMB_KEY);
 
             ArgumentCaptor<UserMedia> captor = ArgumentCaptor.captor();
             then(userMediaRepository).should().save(captor.capture());
             assertThat(captor.getValue().getS3Key()).isEqualTo(RESULT_KEY);
+            assertThat(captor.getValue().getThumbnailKey()).isEqualTo(THUMB_KEY);
             assertThat(captor.getValue().getDisplayName()).isEqualTo("harucut_20260720_100000.png");
             assertThat(job.getStatus()).isEqualTo(ComposeStatus.DONE);
             assertThat(job.getMediaId()).isEqualTo(42L);
@@ -236,7 +240,7 @@ class ComposeServiceTest {
             job.fail("먼저 실패로 기록됨");
             given(composeJobRepository.findById(JOB_ID)).willReturn(Optional.of(job));
 
-            composeService.completeJob(JOB_ID, RESULT_KEY);
+            composeService.completeJob(JOB_ID, RESULT_KEY, THUMB_KEY);
 
             then(userMediaRepository).shouldHaveNoInteractions();
             then(s3Deleter).shouldHaveNoInteractions();

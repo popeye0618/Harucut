@@ -4,6 +4,7 @@ import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestStreamHandler;
 import com.harucut.media.compose.ComposeLambdaPayload;
 import com.harucut.media.compose.FourcutRenderer;
+import com.harucut.media.compose.RenderResult;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
@@ -54,13 +55,21 @@ public class ComposeHandler implements RequestStreamHandler {
             assets.put(key, download(payload.bucket(), key));
         }
 
-        // 썸네일 업로드 연결은 후속 단계 — 지금은 원본만 올린다
-        byte[] png = renderer.render(payload.spec(), sources, assets).fullPng();
+        RenderResult result = renderer.render(payload.spec(), sources, assets);
 
         s3Client.putObject(PutObjectRequest.builder()
                         .bucket(payload.bucket()).key(payload.resultKey())
                         .contentType("image/png").build(),
-                RequestBody.fromBytes(png));
+                RequestBody.fromBytes(result.fullPng()));
+
+        // thumbnailKey 없는 payload = 썸네일 도입 전 서버 — 원본만 올리고 조용히 지나간다.
+        // 이 관용 덕에 Lambda를 서버보다 먼저 배포해도 안전하다
+        if (payload.thumbnailKey() != null) {
+            s3Client.putObject(PutObjectRequest.builder()
+                            .bucket(payload.bucket()).key(payload.thumbnailKey())
+                            .contentType("image/jpeg").build(),
+                    RequestBody.fromBytes(result.thumbnailJpeg()));
+        }
 
         output.write("{\"ok\":true}".getBytes(StandardCharsets.UTF_8));
     }

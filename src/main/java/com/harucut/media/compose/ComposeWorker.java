@@ -24,8 +24,9 @@ public class ComposeWorker {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void handle(ComposeRequestedEvent event) {
         try {
-            composeExecutor.execute(event.spec(), event.sourceKeys(), event.resultKey());
-            composeService.completeJob(event.jobId(), event.resultKey());
+            composeExecutor.execute(event.spec(), event.sourceKeys(),
+                    event.resultKey(), event.thumbnailKey());
+            composeService.completeJob(event.jobId(), event.resultKey(), event.thumbnailKey());
         } catch (Exception e) {
             log.error("네컷 합성 실패: jobId={}", event.jobId(), e);
             markFailed(event.jobId(), e.getMessage());

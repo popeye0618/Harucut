@@ -41,9 +41,10 @@ public class LambdaComposeExecutor implements ComposeExecutor {
     }
 
     @Override
-    public void execute(ComposeSpec spec, List<String> sourceKeys, String resultKey) {
+    public void execute(ComposeSpec spec, List<String> sourceKeys, String resultKey,
+                        String thumbnailKey) {
         String payload = objectMapper.writeValueAsString(
-                new ComposeLambdaPayload(bucket, spec, sourceKeys, resultKey));
+                new ComposeLambdaPayload(bucket, spec, sourceKeys, resultKey, thumbnailKey));
 
         InvokeResponse response = lambdaClient.invoke(InvokeRequest.builder()
                 .functionName(functionName)

@@ -8,6 +8,7 @@ public record ComposeRequestedEvent(
         Long jobId,
         ComposeSpec spec,
         List<String> sourceKeys,
-        String resultKey
+        String resultKey,
+        String thumbnailKey
 ) {
 }

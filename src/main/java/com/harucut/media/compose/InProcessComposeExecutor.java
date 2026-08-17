@@ -21,7 +21,8 @@ public class InProcessComposeExecutor implements ComposeExecutor {
     private final FourcutRenderer fourcutRenderer;
 
     @Override
-    public void execute(ComposeSpec spec, List<String> sourceKeys, String resultKey) {
+    public void execute(ComposeSpec spec, List<String> sourceKeys, String resultKey,
+                        String thumbnailKey) {
         List<byte[]> sources = sourceKeys.stream()
                 .map(fileStorageService::downloadBytes)
                 .toList();
@@ -32,8 +33,8 @@ public class InProcessComposeExecutor implements ComposeExecutor {
             assets.put(key, fileStorageService.downloadBytes(key));
         }
 
-        // 썸네일 업로드 연결은 후속 단계 — 지금은 원본만 올린다
-        fileStorageService.uploadBytes(resultKey,
-                fourcutRenderer.render(spec, sources, assets).fullPng(), "image/png");
+        RenderResult result = fourcutRenderer.render(spec, sources, assets);
+        fileStorageService.uploadBytes(resultKey, result.fullPng(), "image/png");
+        fileStorageService.uploadBytes(thumbnailKey, result.thumbnailJpeg(), "image/jpeg");
     }
 }
