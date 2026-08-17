@@ -1,0 +1,124 @@
+package com.harucut.media.entity;
+
+import com.harucut.common.entity.BaseEntity;
+import com.harucut.media.compose.ComposeSpec;
+import com.harucut.media.converter.ComposeSpecConverter;
+import com.harucut.media.enums.ComposeStatus;
+import com.harucut.user.entity.User;
+import jakarta.persistence.*;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+
+import java.util.List;
+
+// 네컷 합성 작업 한 건의 장부 행 — 이 테이블이 내구성 있는 큐다.
+// 서버가 죽어도 PENDING 행이 남고, 오래된 PENDING은 재실행된다 (decisions.md 네컷 합성 결정)
+@Entity
+@Table(name = "compose_job", uniqueConstraints =
+        @UniqueConstraint(name = "uk_compose_job_user_idempotency",
+                columnNames = {"user_id", "idempotency_key"}))
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+public class ComposeJob extends BaseEntity {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "compose_job_id")
+    private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 16)
+    private ComposeStatus status;
+
+    // 클라이언트가 요청마다 새로 만드는 UUID — (user, key) unique가 더블클릭·재시도 중복 합성을 막는다.
+    // 멱등은 "같은 사용자의 같은 요청"이라는 뜻이라 unique 범위도 사용자 단위다
+    @Column(name = "idempotency_key", nullable = false, length = 64)
+    private String idempotencyKey;
+
+    // 추적용 값 — FK를 걸지 않는다. 스펙이 스냅샷이라 프레임이 수정·삭제돼도 Job은 자급자족한다
+    @Column(name = "frame_id", nullable = false)
+    private Long frameId;
+
+    // "네컷은 정확히 4장"을 코드가 아니라 스키마(not null 4컬럼)로 보장한다. 순서 = 슬롯 순서
+    @Column(name = "source_key_1", nullable = false, length = 512)
+    private String sourceKey1;
+
+    @Column(name = "source_key_2", nullable = false, length = 512)
+    private String sourceKey2;
+
+    @Column(name = "source_key_3", nullable = false, length = 512)
+    private String sourceKey3;
+
+    @Column(name = "source_key_4", nullable = false, length = 512)
+    private String sourceKey4;
+
+    // 요청 시점 프레임의 스냅샷 — 실행·재실행은 프레임을 다시 읽지 않고 이것만 본다
+    @Convert(converter = ComposeSpecConverter.class)
+    @Column(name = "spec_json", nullable = false, length = 8000)
+    private ComposeSpec spec;
+
+    @Column(name = "result_key", length = 512)
+    private String resultKey;
+
+    // 성공 시 만들어진 UserMedia의 id — FK 없이 값만. 미디어는 이후 독립적으로 삭제될 수 있다
+    @Column(name = "media_id")
+    private Long mediaId;
+
+    @Column(name = "failure_reason")
+    private String failureReason;
+
+    private ComposeJob(User user, Long frameId, String idempotencyKey,
+                       List<String> sourceKeys, ComposeSpec spec) {
+        this.user = user;
+        this.status = ComposeStatus.PENDING;
+        this.idempotencyKey = idempotencyKey;
+        this.frameId = frameId;
+        this.sourceKey1 = sourceKeys.get(0);
+        this.sourceKey2 = sourceKeys.get(1);
+        this.sourceKey3 = sourceKeys.get(2);
+        this.sourceKey4 = sourceKeys.get(3);
+        this.spec = spec;
+    }
+
+    public static ComposeJob create(User user, Long frameId, String idempotencyKey,
+                                    List<String> sourceKeys, ComposeSpec spec) {
+        if (user == null) {
+            throw new IllegalArgumentException("합성 작업에는 소유자가 필요하다");
+        }
+        if (sourceKeys == null || sourceKeys.size() != 4
+                || sourceKeys.stream().anyMatch(key -> key == null || key.isBlank())) {
+            throw new IllegalArgumentException("원본 사진 key는 정확히 4개여야 한다");
+        }
+        return new ComposeJob(user, frameId, idempotencyKey, sourceKeys, spec);
+    }
+
+    // 재실행이 겹치면 같은 Job을 두 번 끝낼 수 있다 — PENDING이 아닌 행의 전이는
+    // 조용히 무시해서 먼저 기록된 결과가 이긴다 (complete/fail 공통)
+    public void complete(String resultKey, Long mediaId) {
+        if (status != ComposeStatus.PENDING) {
+            return;
+        }
+        this.status = ComposeStatus.DONE;
+        this.resultKey = resultKey;
+        this.mediaId = mediaId;
+    }
+
+    public void fail(String reason) {
+        if (status != ComposeStatus.PENDING) {
+            return;
+        }
+        this.status = ComposeStatus.FAILED;
+        this.failureReason = reason != null && reason.length() > 255
+                ? reason.substring(0, 255) : reason;
+    }
+
+    // Lambda 페이로드 조립용 — 슬롯 순서 그대로
+    public List<String> sourceKeys() {
+        return List.of(sourceKey1, sourceKey2, sourceKey3, sourceKey4);
+    }
+}
