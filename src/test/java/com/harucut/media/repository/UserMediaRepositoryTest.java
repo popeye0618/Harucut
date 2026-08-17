@@ -53,6 +53,23 @@ class UserMediaRepositoryTest {
     }
 
     @Test
+    @DisplayName("thumbnailKey는 nullable이다 — 있으면 그대로, 없으면 null로 왕복한다")
+    void thumbnailKeyRoundTrip() {
+        User user = persistUser("owner@harucut.com");
+        UserMedia withThumb = em.persist(UserMedia.of(user,
+                "uploads/users/abc/fourcuts/job-1.png",
+                "uploads/users/abc/fourcuts/job-1-thumb.jpg", "이름.png"));
+        UserMedia withoutThumb = persistMedia(user, "uploads/users/abc/fourcuts/job-2.png");
+        em.flush();
+        em.clear();
+
+        assertThat(userMediaRepository.findById(withThumb.getId()).orElseThrow().getThumbnailKey())
+                .isEqualTo("uploads/users/abc/fourcuts/job-1-thumb.jpg");
+        assertThat(userMediaRepository.findById(withoutThumb.getId()).orElseThrow().getThumbnailKey())
+                .isNull();
+    }
+
+    @Test
     @DisplayName("같은 s3Key를 두 번 저장하면 DB가 거부한다 — unique 제약")
     void duplicateKeyRejected() {
         User user = persistUser("owner@harucut.com");

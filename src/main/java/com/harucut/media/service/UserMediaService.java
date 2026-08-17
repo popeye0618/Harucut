@@ -20,7 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.List;
+import java.util.Arrays;
 
 @Service
 @Transactional
@@ -70,7 +70,9 @@ public class UserMediaService {
         UserMedia media = getOwnedMedia(user, mediaId);
         // 기간 검사 없음 — 안 보이는 미디어도 지우는 건 가능해야 한다 (프레임 삭제와 같은 원칙)
 
-        s3Deleter.deleteAfterCommit(List.of(media.getS3Key()));
+        // List.of가 아니라 Arrays.asList인 이유 — 썸네일 없는 옛 행의 null을 List.of는
+        // 거부한다(NPE). null은 S3Deleter의 관리 key 필터가 거른다
+        s3Deleter.deleteAfterCommit(Arrays.asList(media.getS3Key(), media.getThumbnailKey()));
         userMediaRepository.delete(media);
     }
 
@@ -87,10 +89,13 @@ public class UserMediaService {
 
     private UserMediaResponse toResponse(UserMedia media) {
         // 같은 파일에 URL이 둘인 이유 — viewUrl은 <img>용 plain GET,
-        // downloadUrl은 attachment disposition이라 브라우저가 저장 대화상자를 띄운다
+        // downloadUrl은 attachment disposition이라 브라우저가 저장 대화상자를 띄운다.
+        // thumbnailUrl은 축소본이 있을 때만 — null이면 응답에서 필드째 생략된다
+        String thumbnailUrl = media.getThumbnailKey() == null ? null
+                : fileStorageService.generatePresignedGetUrl(media.getThumbnailKey());
         String viewUrl = fileStorageService.generatePresignedGetUrl(media.getS3Key());
         String downloadUrl = fileStorageService
                 .generatePresignedDownloadUrl(media.getS3Key(), media.getDisplayName());
-        return UserMediaResponse.of(media, viewUrl, downloadUrl);
+        return UserMediaResponse.of(media, thumbnailUrl, viewUrl, downloadUrl);
     }
 }

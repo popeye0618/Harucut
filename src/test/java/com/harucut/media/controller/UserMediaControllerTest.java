@@ -66,6 +66,8 @@ class UserMediaControllerTest extends SecurityBeansMockSupport {
                 .hasPathSatisfying("$.data.content[0].mediaId", id -> assertThat(id).isEqualTo(7))
                 .hasPathSatisfying("$.data.content[0].viewUrl",
                         url -> assertThat(url).isEqualTo("https://view.example/p.png"))
+                // 봉투가 null 필드를 생략한다 — 프론트는 "null 체크"가 아니라 "필드 존재 체크"를 한다
+                .doesNotHavePath("$.data.content[0].thumbnailUrl")
                 .hasPathSatisfying("$.data.totalElements", total -> assertThat(total).isEqualTo(1));
     }
 
@@ -191,9 +193,10 @@ class UserMediaControllerTest extends SecurityBeansMockSupport {
                 .createAccessToken(PUBLIC_ID, UserRole.ROLE_USER, UserStatus.ACTIVE).value());
     }
 
+    // thumbnailUrl null = 썸네일 없는 옛 행 — 직렬화 계약(필드 생략)을 listOk가 검증한다
     private static UserMediaResponse mediaResponse() {
         return new UserMediaResponse(7L, "uploads/users/abc/fourcuts/p.png", "이름.png",
-                "https://view.example/p.png", "https://signed.example/p.png",
+                null, "https://view.example/p.png", "https://signed.example/p.png",
                 LocalDateTime.of(2026, 7, 20, 10, 0));
     }
 }
