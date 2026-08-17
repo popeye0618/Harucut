@@ -34,6 +34,8 @@ public record FrameCreateRequest(
             String id,
             @NotNull ComponentType type,
             @NotBlank String source,
+            // TEXT 전용: 구워 올린 텍스트 층의 key. 선택 — 없으면 합성 시점에 검증한다
+            String renderedKey,
             Double x,
             Double y,
             Double width,

@@ -24,8 +24,10 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("FrameComponentAssembler")
@@ -36,6 +38,9 @@ class FrameComponentAssemblerTest {
     private static final String PHOTO_KEY = "uploads/users/AbCdEf12Gh/components/photo1.png";
     private static final String PREVIEW_KEY = "uploads/users/AbCdEf12Gh/webm/preview.png";
     private static final String BG_KEY = "uploads/users/AbCdEf12Gh/components/bg.png";
+    private static final String RENDERED_URL =
+            "https://harucut-test.s3.amazonaws.com/uploads/users/AbCdEf12Gh/components/text1.png";
+    private static final String RENDERED_KEY = "uploads/users/AbCdEf12Gh/components/text1.png";
 
     @Mock
     private FrameAssetManager frameAssetManager;
@@ -63,7 +68,7 @@ class FrameComponentAssemblerTest {
         void mapsFieldsAndNormalizesSource() {
             given(frameAssetManager.normalizeSource(ComponentType.PHOTO, PHOTO_URL)).willReturn(PHOTO_KEY);
             FrameCreateRequest.ComponentRequest request = new FrameCreateRequest.ComponentRequest(
-                    "comp-1", ComponentType.PHOTO, PHOTO_URL,
+                    "comp-1", ComponentType.PHOTO, PHOTO_URL, null,
                     120.5, 220.0, 360.0, 480.0, 1.5, 45.0, 3, Map.of("borderRadius", 8));
 
             List<FrameComponent> components = assembler.createComponents(List.of(request));
@@ -86,28 +91,68 @@ class FrameComponentAssemblerTest {
         void nullStyleBecomesEmptyMap() {
             given(frameAssetManager.normalizeSource(ComponentType.TEXT, "봄 여행")).willReturn("봄 여행");
             FrameCreateRequest.ComponentRequest request = new FrameCreateRequest.ComponentRequest(
-                    null, ComponentType.TEXT, "봄 여행",
+                    null, ComponentType.TEXT, "봄 여행", null,
                     0.0, 0.0, null, null, null, 0.0, 0, null);
 
             List<FrameComponent> components = assembler.createComponents(List.of(request));
 
             assertThat(components.get(0).getStyle()).isNotNull().isEmpty();
         }
+
+        @Test
+        @DisplayName("TEXT의 renderedKey는 URL로 와도 정규화된 key로 저장된다")
+        void textRenderedKeyNormalized() {
+            given(frameAssetManager.normalizeSource(ComponentType.TEXT, "봄 여행")).willReturn("봄 여행");
+            given(frameAssetManager.normalizeImageKey(RENDERED_URL)).willReturn(RENDERED_KEY);
+            FrameCreateRequest.ComponentRequest request =
+                    componentRequest(ComponentType.TEXT, "봄 여행", RENDERED_URL);
+
+            List<FrameComponent> components = assembler.createComponents(List.of(request));
+
+            assertThat(components.get(0).getRenderedKey()).isEqualTo(RENDERED_KEY);
+        }
+
+        @Test
+        @DisplayName("PHOTO가 renderedKey를 보내면 버린다 — TEXT 전용 필드다")
+        void photoRenderedKeyDiscarded() {
+            given(frameAssetManager.normalizeSource(ComponentType.PHOTO, PHOTO_URL)).willReturn(PHOTO_KEY);
+            FrameCreateRequest.ComponentRequest request =
+                    componentRequest(ComponentType.PHOTO, PHOTO_URL, RENDERED_URL);
+
+            List<FrameComponent> components = assembler.createComponents(List.of(request));
+
+            assertThat(components.get(0).getRenderedKey()).isNull();
+            then(frameAssetManager).should(never()).normalizeImageKey(anyString());
+        }
+
+        @Test
+        @DisplayName("TEXT라도 renderedKey가 빈 값이면 null로 저장된다 — 선택 필드")
+        void blankRenderedKeyBecomesNull() {
+            given(frameAssetManager.normalizeSource(ComponentType.TEXT, "봄 여행")).willReturn("봄 여행");
+            FrameCreateRequest.ComponentRequest request =
+                    componentRequest(ComponentType.TEXT, "봄 여행", "  ");
+
+            List<FrameComponent> components = assembler.createComponents(List.of(request));
+
+            assertThat(components.get(0).getRenderedKey()).isNull();
+        }
     }
 
     @Nested
-    @DisplayName("extractPhotoKeys")
-    class ExtractPhotoKeys {
+    @DisplayName("extractAssetKeys")
+    class ExtractAssetKeys {
 
         @Test
-        @DisplayName("PHOTO의 source만 수집한다 — STICKER·TEXT는 우리 버킷 소유가 아니다")
-        void collectsOnlyPhotoSources() {
+        @DisplayName("PHOTO의 source와 TEXT의 renderedKey만 수집한다 — 나머지는 우리 버킷 소유가 아니다")
+        void collectsPhotoSourcesAndRenderedKeys() {
             List<FrameComponent> components = List.of(
                     component(ComponentType.PHOTO, PHOTO_KEY),
                     component(ComponentType.STICKER, "/static/stickers/heart.png"),
-                    component(ComponentType.TEXT, "봄 여행"));
+                    textComponent("봄 여행", RENDERED_KEY),
+                    textComponent("안 구운 텍스트", null));
 
-            assertThat(assembler.extractPhotoKeys(components)).containsExactly(PHOTO_KEY);
+            assertThat(assembler.extractAssetKeys(components))
+                    .containsExactly(PHOTO_KEY, RENDERED_KEY);
         }
     }
 
@@ -298,6 +343,31 @@ class FrameComponentAssemblerTest {
         }
 
         @Test
+        @DisplayName("교체된 구운 텍스트 key는 삭제 예약되고 유지된 key는 남는다")
+        void collectsOrphanedRenderedKeys() {
+            Frame frame = colorFrame();
+            frame.addComponent(textComponent("봄", "uploads/text-old.png"));
+            frame.addComponent(textComponent("여름", "uploads/text-kept.png"));
+            FrameCreateRequest request = new FrameCreateRequest("제목", null, PREVIEW_KEY,
+                    FrameType.CLASSIC, null, null, new BackgroundAttributes.Color("#FFE4E1"),
+                    List.of(componentRequest(ComponentType.TEXT, "봄", "uploads/text-new.png"),
+                            componentRequest(ComponentType.TEXT, "여름", "uploads/text-kept.png")));
+            given(frameAssetManager.normalizeImageKey(PREVIEW_KEY)).willReturn(PREVIEW_KEY);
+            given(frameAssetManager.normalizeSource(eq(ComponentType.TEXT), anyString()))
+                    .willAnswer(invocation -> invocation.getArgument(1));
+            given(frameAssetManager.normalizeImageKey("uploads/text-new.png"))
+                    .willReturn("uploads/text-new.png");
+            given(frameAssetManager.normalizeImageKey("uploads/text-kept.png"))
+                    .willReturn("uploads/text-kept.png");
+
+            assembler.replaceContent(frame, request);
+
+            ArgumentCaptor<Collection<String>> captor = ArgumentCaptor.captor();
+            then(frameAssetManager).should().deleteAfterCommit(captor.capture());
+            assertThat(captor.getValue()).containsExactly("uploads/text-old.png");
+        }
+
+        @Test
         @DisplayName("배경·프리뷰·사진이 전부 그대로면 아무것도 삭제 예약되지 않는다")
         void keepsReusedKeys() {
             Frame frame = Frame.system("제목", "설명", "uploads/preview.png", FrameType.CLASSIC,
@@ -325,14 +395,15 @@ class FrameComponentAssemblerTest {
     class CollectAllKeys {
 
         @Test
-        @DisplayName("사진·배경·프리뷰 순으로 전부 수집한다")
+        @DisplayName("사진·구운 텍스트·배경·프리뷰 순으로 전부 수집한다")
         void collectsPhotosBackgroundPreview() {
             Frame frame = Frame.system("제목", "설명", PREVIEW_KEY, FrameType.CLASSIC,
                     new BackgroundAttributes.Image(BG_KEY, 0.8, null));
             frame.addComponent(component(ComponentType.PHOTO, PHOTO_KEY));
+            frame.addComponent(textComponent("봄 여행", RENDERED_KEY));
 
             assertThat(assembler.collectAllKeys(frame))
-                    .containsExactly(PHOTO_KEY, BG_KEY, PREVIEW_KEY);
+                    .containsExactly(PHOTO_KEY, RENDERED_KEY, BG_KEY, PREVIEW_KEY);
         }
 
         @Test
@@ -347,8 +418,13 @@ class FrameComponentAssemblerTest {
     }
 
     private static FrameCreateRequest.ComponentRequest componentRequest(ComponentType type, String source) {
+        return componentRequest(type, source, null);
+    }
+
+    private static FrameCreateRequest.ComponentRequest componentRequest(
+            ComponentType type, String source, String renderedKey) {
         return new FrameCreateRequest.ComponentRequest(
-                null, type, source, null, null, null, null, null, null, null, null);
+                null, type, source, renderedKey, null, null, null, null, null, null, null, null);
     }
 
     private static Frame colorFrame() {
@@ -358,6 +434,11 @@ class FrameComponentAssemblerTest {
 
     private static FrameComponent component(ComponentType type, String source) {
         return FrameComponent.builder().source(source).type(type).build();
+    }
+
+    private static FrameComponent textComponent(String source, String renderedKey) {
+        return FrameComponent.builder()
+                .source(source).type(ComponentType.TEXT).renderedKey(renderedKey).build();
     }
 
     private static FrameComponent componentWithZIndex(String source, int zIndex) {
