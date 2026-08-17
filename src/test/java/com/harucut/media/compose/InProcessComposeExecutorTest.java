@@ -31,6 +31,7 @@ class InProcessComposeExecutorTest {
             "uploads/u/s1.jpg", "uploads/u/s2.jpg", "uploads/u/s3.jpg", "uploads/u/s4.jpg");
     private static final String RESULT_KEY = "uploads/u/fourcuts/job-5.png";
     private static final byte[] PNG = {1, 2, 3};
+    private static final RenderResult RESULT = new RenderResult(PNG, new byte[]{9});
 
     @Mock
     private FileStorageService fileStorageService;
@@ -51,7 +52,7 @@ class InProcessComposeExecutorTest {
         ComposeSpec spec = spec(new BackgroundAttributes.Color("#FFF"), List.of());
         SOURCE_KEYS.forEach(key ->
                 given(fileStorageService.downloadBytes(key)).willReturn(key.getBytes()));
-        given(fourcutRenderer.render(eq(spec), anyList(), anyMap())).willReturn(PNG);
+        given(fourcutRenderer.render(eq(spec), anyList(), anyMap())).willReturn(RESULT);
 
         executor.execute(spec, SOURCE_KEYS, RESULT_KEY);
 
@@ -70,7 +71,7 @@ class InProcessComposeExecutorTest {
                         layer("uploads/u/text.png", 3)));
         given(fileStorageService.downloadBytes(any())).willAnswer(inv ->
                 ((String) inv.getArgument(0)).getBytes());
-        given(fourcutRenderer.render(eq(spec), anyList(), anyMap())).willReturn(PNG);
+        given(fourcutRenderer.render(eq(spec), anyList(), anyMap())).willReturn(RESULT);
 
         executor.execute(spec, SOURCE_KEYS, RESULT_KEY);
 
@@ -87,7 +88,7 @@ class InProcessComposeExecutorTest {
         ComposeSpec spec = spec(new BackgroundAttributes.Color("#FFF"), List.of());
         SOURCE_KEYS.forEach(key ->
                 given(fileStorageService.downloadBytes(key)).willReturn(PNG));
-        given(fourcutRenderer.render(eq(spec), anyList(), anyMap())).willReturn(PNG);
+        given(fourcutRenderer.render(eq(spec), anyList(), anyMap())).willReturn(RESULT);
 
         executor.execute(spec, SOURCE_KEYS, RESULT_KEY);
 
@@ -100,7 +101,7 @@ class InProcessComposeExecutorTest {
         ComposeSpec spec = spec(new BackgroundAttributes.Color("#FFF"), List.of());
         SOURCE_KEYS.forEach(key ->
                 given(fileStorageService.downloadBytes(key)).willReturn(PNG));
-        given(fourcutRenderer.render(eq(spec), anyList(), anyMap())).willReturn(PNG);
+        given(fourcutRenderer.render(eq(spec), anyList(), anyMap())).willReturn(RESULT);
 
         executor.execute(spec, SOURCE_KEYS, RESULT_KEY);
 

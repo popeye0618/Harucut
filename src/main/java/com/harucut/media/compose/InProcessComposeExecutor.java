@@ -32,7 +32,8 @@ public class InProcessComposeExecutor implements ComposeExecutor {
             assets.put(key, fileStorageService.downloadBytes(key));
         }
 
+        // 썸네일 업로드 연결은 후속 단계 — 지금은 원본만 올린다
         fileStorageService.uploadBytes(resultKey,
-                fourcutRenderer.render(spec, sources, assets), "image/png");
+                fourcutRenderer.render(spec, sources, assets).fullPng(), "image/png");
     }
 }

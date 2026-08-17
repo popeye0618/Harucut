@@ -54,7 +54,8 @@ public class ComposeHandler implements RequestStreamHandler {
             assets.put(key, download(payload.bucket(), key));
         }
 
-        byte[] png = renderer.render(payload.spec(), sources, assets);
+        // 썸네일 업로드 연결은 후속 단계 — 지금은 원본만 올린다
+        byte[] png = renderer.render(payload.spec(), sources, assets).fullPng();
 
         s3Client.putObject(PutObjectRequest.builder()
                         .bucket(payload.bucket()).key(payload.resultKey())
