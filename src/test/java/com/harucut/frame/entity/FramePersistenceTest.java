@@ -3,6 +3,7 @@ package com.harucut.frame.entity;
 import com.harucut.config.JpaAuditingConfig;
 import com.harucut.frame.attributes.BackgroundAttributes;
 import com.harucut.frame.converter.BackgroundConverter;
+import com.harucut.frame.converter.CellCutoutsConverter;
 import com.harucut.frame.converter.StyleMapConverter;
 import com.harucut.frame.enums.ComponentType;
 import com.harucut.frame.enums.FrameType;
@@ -19,6 +20,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 import tools.jackson.databind.ObjectMapper;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -103,6 +105,30 @@ class FramePersistenceTest {
     }
 
     @Nested
+    @DisplayName("셀 누끼 왕복")
+    class CellCutoutsRoundTrip {
+
+        @Test
+        @DisplayName("칸별 토글이 저장 후 재조회해도 같은 값이다")
+        void cutoutsRoundTrip() {
+            Frame saved = em.persistFlushFind(
+                    Frame.system("기본", "설명", "uploads/p.png", FrameType.CLASSIC,
+                            new BackgroundAttributes.Color("#FFE4E1"),
+                            List.of(true, false, true, false)));
+
+            assertThat(saved.getCellCutouts()).containsExactly(true, false, true, false);
+        }
+
+        @Test
+        @DisplayName("누끼 없이 만들면 전부 끔 4개다 — null이 아니다")
+        void defaultsToAllOff() {
+            Frame saved = em.persistFlushFind(systemFrame());
+
+            assertThat(saved.getCellCutouts()).containsExactly(false, false, false, false);
+        }
+    }
+
+    @Nested
     @DisplayName("컴포넌트 생명주기 — cascade와 orphanRemoval")
     class ComponentLifecycle {
 
@@ -168,6 +194,24 @@ class FramePersistenceTest {
             StyleMapConverter converter = new StyleMapConverter(objectMapper);
 
             assertThat(converter.convertToEntityAttribute("{broken")).isEmpty();
+        }
+
+        @Test
+        @DisplayName("셀 누끼 JSON이 깨져 있으면 전부 끔으로 조용히 내려앉는다 — 스타일과 같은 철학")
+        void corruptCutoutsDegrade() {
+            CellCutoutsConverter converter = new CellCutoutsConverter(objectMapper);
+
+            assertThat(converter.convertToEntityAttribute("[broken"))
+                    .containsExactly(false, false, false, false);
+        }
+
+        @Test
+        @DisplayName("null 컬럼(필드가 없던 시절의 행)도 전부 끔 4개로 읽힌다")
+        void nullColumnBecomesAllOff() {
+            CellCutoutsConverter converter = new CellCutoutsConverter(objectMapper);
+
+            assertThat(converter.convertToEntityAttribute(null))
+                    .containsExactly(false, false, false, false);
         }
     }
 

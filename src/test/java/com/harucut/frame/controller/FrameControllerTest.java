@@ -248,6 +248,7 @@ class FrameControllerTest extends SecurityBeansMockSupport {
     private static FrameResponse frameResponse() {
         return new FrameResponse(1L, "봄 여행 4컷", "설명", "https://preview.example/p.png",
                 FrameType.CLASSIC, 2000, 6000, new BackgroundAttributes.Color("#FFE4E1"),
+                List.of(false, false, false, false),
                 List.of(new FrameResponse.ComponentResponse(10L, ComponentType.PHOTO,
                         "https://photo.example/1.png", "uploads/users/AbCdEf12Gh/components/photo1.png",
                         120.5, 220.0, 360.0, 480.0, 1.0, 0.0, 1, Map.of())),

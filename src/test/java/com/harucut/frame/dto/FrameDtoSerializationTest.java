@@ -104,7 +104,7 @@ class FrameDtoSerializationTest {
         void descriptionFallsBackToEmpty() {
             FrameCreateRequest request = new FrameCreateRequest(
                     "제목", null, "uploads/p.png", FrameType.CLASSIC, 0, 0,
-                    new BackgroundAttributes.Color("#FFF"), null);
+                    new BackgroundAttributes.Color("#FFF"), null, null);
 
             assertThat(request.descriptionOrEmpty()).isEmpty();
         }

@@ -23,7 +23,7 @@ public class FrameComponentAssembler {
 
     private final FrameAssetManager frameAssetManager;
 
-    // 요청 → 엔티티. source는 저장 직전에 순수 key로 정규화된다 (PHOTO만)
+    // 요청 → 엔티티. 저장 직전에 순수 key로 정규화된다 — PHOTO의 source, TEXT의 renderedKey
     public List<FrameComponent> createComponents(List<FrameCreateRequest.ComponentRequest> requests) {
         if (requests == null) {
             return List.of();
@@ -36,17 +36,35 @@ public class FrameComponentAssembler {
                         .width(dto.width()).height(dto.height()).scale(dto.scale())
                         .rotation(dto.rotation())
                         .zIndex(dto.zIndex())
+                        .renderedKey(renderedKeyFor(dto))
                         .style(dto.styleJson())
                         .build())
                 .toList();
     }
 
-    // 수정/삭제 시 S3 삭제 후보 수집 — PHOTO의 source만 우리 버킷 소유다
-    public List<String> extractPhotoKeys(List<FrameComponent> components) {
-        return components.stream()
-                .filter(c -> c.getType() == ComponentType.PHOTO)
-                .map(FrameComponent::getSource)
-                .toList();
+    // 구운 텍스트 key는 TEXT에만 의미가 있다 — 다른 타입이 보내면 버려서 쓰레기 저장을 막는다.
+    // TEXT라도 선택 값: 없으면 null로 두고, 있어야 하는지는 합성 API가 검증한다
+    private String renderedKeyFor(FrameCreateRequest.ComponentRequest dto) {
+        if (dto.type() != ComponentType.TEXT
+                || dto.renderedKey() == null || dto.renderedKey().isBlank()) {
+            return null;
+        }
+        return frameAssetManager.normalizeImageKey(dto.renderedKey());
+    }
+
+    // 수정/삭제 시 S3 삭제 후보 수집 — 컴포넌트에서 우리 버킷 소유는
+    // PHOTO의 source와 TEXT의 renderedKey 둘이다 (STICKER=정적 경로, TEXT source=본문)
+    public List<String> extractAssetKeys(List<FrameComponent> components) {
+        List<String> keys = new ArrayList<>();
+        for (FrameComponent component : components) {
+            if (component.getType() == ComponentType.PHOTO) {
+                keys.add(component.getSource());
+            }
+            if (component.getRenderedKey() != null) {
+                keys.add(component.getRenderedKey());
+            }
+        }
+        return keys;
     }
 
     // 저장 직전 배경 정규화 — IMAGE key의 URL 흔적을 지우고, 응답 전용 url은 확실히 비운다
@@ -71,7 +89,8 @@ public class FrameComponentAssembler {
     public Frame assembleOwned(User user, FrameCreateRequest request) {
         Frame frame = Frame.owned(user, request.title(), request.descriptionOrEmpty(),
                 frameAssetManager.normalizeImageKey(request.previewKey()),
-                request.frameType(), normalizeBackground(request.background()));
+                request.frameType(), normalizeBackground(request.background()),
+                request.cellCutouts());
         createComponents(request.components()).forEach(frame::addComponent);
         return frame;
     }
@@ -79,7 +98,8 @@ public class FrameComponentAssembler {
     public Frame assembleSystem(FrameCreateRequest request) {
         Frame frame = Frame.system(request.title(), request.descriptionOrEmpty(),
                 frameAssetManager.normalizeImageKey(request.previewKey()),
-                request.frameType(), normalizeBackground(request.background()));
+                request.frameType(), normalizeBackground(request.background()),
+                request.cellCutouts());
         createComponents(request.components()).forEach(frame::addComponent);
         return frame;
     }
@@ -89,11 +109,12 @@ public class FrameComponentAssembler {
     public void replaceContent(Frame frame, FrameCreateRequest request) {
         String oldBackgroundKey = extractBackgroundKey(frame.getBackground());
         String oldPreviewKey = frame.getPreviewKey();
-        List<String> oldPhotoKeys = extractPhotoKeys(frame.getComponents());
+        List<String> oldAssetKeys = extractAssetKeys(frame.getComponents());
 
         BackgroundAttributes newBackground = normalizeBackground(request.background());
         String newPreviewKey = frameAssetManager.normalizeImageKey(request.previewKey());
-        frame.updateMetadata(request.title(), request.descriptionOrEmpty(), newBackground, newPreviewKey);
+        frame.updateMetadata(request.title(), request.descriptionOrEmpty(), newBackground,
+                newPreviewKey, request.cellCutouts());
 
         frame.clearComponents();
         List<FrameComponent> newComponents = createComponents(request.components());
@@ -109,14 +130,15 @@ public class FrameComponentAssembler {
         if (!oldPreviewKey.equals(newPreviewKey)) {
             garbage.add(oldPreviewKey);
         }
-        Set<String> keptPhotoKeys = Set.copyOf(extractPhotoKeys(newComponents));
-        oldPhotoKeys.stream().filter(key -> !keptPhotoKeys.contains(key)).forEach(garbage::add);
+        Set<String> keptAssetKeys = Set.copyOf(extractAssetKeys(newComponents));
+        oldAssetKeys.stream().filter(key -> !keptAssetKeys.contains(key)).forEach(garbage::add);
         frameAssetManager.deleteAfterCommit(garbage);
     }
 
-    // 삭제 시 예약할 key 전부: 사진 + 배경 + 프리뷰. COLOR 배경의 null은 deleteAfterCommit 필터가 거른다
+    // 삭제 시 예약할 key 전부: 사진·구운 텍스트 + 배경 + 프리뷰.
+    // COLOR 배경의 null은 deleteAfterCommit 필터가 거른다
     public List<String> collectAllKeys(Frame frame) {
-        List<String> keys = new ArrayList<>(extractPhotoKeys(frame.getComponents()));
+        List<String> keys = new ArrayList<>(extractAssetKeys(frame.getComponents()));
         keys.add(extractBackgroundKey(frame.getBackground()));
         keys.add(frame.getPreviewKey());
         return keys;

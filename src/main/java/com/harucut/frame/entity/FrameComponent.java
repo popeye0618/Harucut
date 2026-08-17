@@ -41,6 +41,11 @@ public class FrameComponent extends BaseEntity {
     @Column(name = "z_index")
     private int zIndex;
 
+    // TEXT 전용: 프론트가 출력 해상도의 투명 PNG로 구워 올린 텍스트 층의 S3 key.
+    // 편집기는 source(글자)+style로 다시 그리므로 응답에는 안 나가고, 합성 파이프라인만 읽는다
+    @Column(name = "rendered_key", length = 512)
+    private String renderedKey;
+
     @Convert(converter = StyleMapConverter.class)
     @Column(name = "style_json", length = 4000)
     private Map<String, Object> style;
@@ -52,7 +57,7 @@ public class FrameComponent extends BaseEntity {
     @Builder
     private FrameComponent(String source, ComponentType type, double x, double y,
                            Double width, Double height, Double scale, double rotation,
-                           int zIndex, Map<String, Object> style) {
+                           int zIndex, String renderedKey, Map<String, Object> style) {
         this.source = source;
         this.type = type;
         this.x = x;
@@ -62,6 +67,7 @@ public class FrameComponent extends BaseEntity {
         this.scale = scale;
         this.rotation = rotation;
         this.zIndex = zIndex;
+        this.renderedKey = renderedKey;
         this.style = style == null ? Map.of() : style;
     }
 

@@ -206,15 +206,15 @@ class FrameServiceTest {
         }
 
         @Test
-        @DisplayName("남의 프레임은 GEN-021이고 정책 검사까지 가지도 않는다 — 소유권이 첫 관문")
-        void othersFrameForbidden() {
+        @DisplayName("남의 프레임은 GEN-031이고 정책 검사까지 가지도 않는다 — 소유권이 첫 관문")
+        void othersFrameHidden() {
             given(userRepository.findByPublicId(PUBLIC_ID)).willReturn(Optional.of(user));
             given(frameRepository.findById(FRAME_ID)).willReturn(Optional.of(othersFrame()));
 
             assertThatThrownBy(() -> frameService.getFrame(PUBLIC_ID, FRAME_ID))
                     .isInstanceOf(BusinessException.class)
                     .extracting("errorCode")
-                    .isEqualTo(GlobalErrorCode.FORBIDDEN);
+                    .isEqualTo(GlobalErrorCode.NOT_FOUND);
 
             then(frameSubscriptionPolicy).shouldHaveNoInteractions();
         }
@@ -321,15 +321,15 @@ class FrameServiceTest {
         }
 
         @Test
-        @DisplayName("남의 프레임 수정은 GEN-021이고 아무것도 바뀌지 않는다")
-        void othersFrameForbidden() {
+        @DisplayName("남의 프레임 수정은 GEN-031이고 아무것도 바뀌지 않는다")
+        void othersFrameHidden() {
             given(userRepository.findByPublicId(PUBLIC_ID)).willReturn(Optional.of(user));
             given(frameRepository.findById(FRAME_ID)).willReturn(Optional.of(othersFrame()));
 
             assertThatThrownBy(() -> frameService.updateFrame(PUBLIC_ID, FRAME_ID, request()))
                     .isInstanceOf(BusinessException.class)
                     .extracting("errorCode")
-                    .isEqualTo(GlobalErrorCode.FORBIDDEN);
+                    .isEqualTo(GlobalErrorCode.NOT_FOUND);
 
             then(frameComponentAssembler).shouldHaveNoInteractions();
             then(frameRepository).should(never()).saveAndFlush(any());
@@ -360,15 +360,15 @@ class FrameServiceTest {
         }
 
         @Test
-        @DisplayName("남의 프레임 삭제는 GEN-021이고 아무것도 지워지지 않는다")
-        void othersFrameForbidden() {
+        @DisplayName("남의 프레임 삭제는 GEN-031이고 아무것도 지워지지 않는다")
+        void othersFrameHidden() {
             given(userRepository.findByPublicId(PUBLIC_ID)).willReturn(Optional.of(user));
             given(frameRepository.findById(FRAME_ID)).willReturn(Optional.of(othersFrame()));
 
             assertThatThrownBy(() -> frameService.deleteFrame(PUBLIC_ID, FRAME_ID))
                     .isInstanceOf(BusinessException.class)
                     .extracting("errorCode")
-                    .isEqualTo(GlobalErrorCode.FORBIDDEN);
+                    .isEqualTo(GlobalErrorCode.NOT_FOUND);
 
             then(frameRepository).should(never()).delete(any(Frame.class));
             then(frameAssetManager).shouldHaveNoInteractions();
@@ -400,11 +400,12 @@ class FrameServiceTest {
     }
 
     private static FrameCreateRequest request() {
-        return new FrameCreateRequest("제목", null, "uploads/p.png", FrameType.CLASSIC, null, null, COLOR, null);
+        return new FrameCreateRequest("제목", null, "uploads/p.png", FrameType.CLASSIC, null, null,
+                COLOR, null, null);
     }
 
     private static FrameResponse response(Long frameId) {
         return new FrameResponse(frameId, "제목", "설명", "https://preview", FrameType.CLASSIC,
-                2000, 6000, COLOR, List.of(), false);
+                2000, 6000, COLOR, List.of(false, false, false, false), List.of(), false);
     }
 }

@@ -18,6 +18,7 @@ public record FrameResponse(
         int canvasWidth,         // frameType 파생 고정값 — 요청이 뭐라 보냈든 무관
         int canvasHeight,
         BackgroundAttributes background,
+        List<Boolean> cellCutouts,
         List<ComponentResponse> components,
         boolean isSystem
 ) {
@@ -32,7 +33,7 @@ public record FrameResponse(
                 previewUrl, frame.getFrameType(),
                 frame.getFrameType().getLayout().canvasWidth(),
                 frame.getFrameType().getLayout().canvasHeight(),
-                resolvedBackground, components, frame.isSystem());
+                resolvedBackground, frame.getCellCutouts(), components, frame.isSystem());
     }
 
     public record ComponentResponse(

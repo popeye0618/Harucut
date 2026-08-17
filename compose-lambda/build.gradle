@@ -1,0 +1,48 @@
+// 네컷 합성 Lambda 함수 — compose-core의 렌더러로 그린다.
+// 스프링 없음: 배포물에 들어가는 건 핸들러 + 코어 + S3 SDK + 잭슨뿐이다
+plugins {
+    id 'java'
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation project(':compose-core')
+
+    // 잭슨 버전을 서버와 같은 Boot BOM으로 고정 — payload 직렬화가 서버와 한 벌이어야 한다
+    implementation platform('org.springframework.boot:spring-boot-dependencies:4.1.0')
+    implementation 'tools.jackson.core:jackson-databind'
+
+    implementation platform('software.amazon.awssdk:bom:2.25.67')
+    implementation 'software.amazon.awssdk:s3'
+    implementation 'com.amazonaws:aws-lambda-java-core:1.2.3'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testImplementation 'org.assertj:assertj-core'
+    testImplementation 'org.mockito:mockito-core'
+    testImplementation 'org.mockito:mockito-junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+// AWS 자바 Lambda의 zip 표준 구조: 클래스는 루트에, 의존 jar는 lib/에
+tasks.register('buildZip', Zip) {
+    archiveFileName = 'compose-lambda.zip'
+    destinationDirectory = layout.buildDirectory.dir('dist')
+    from compileJava
+    from processResources
+    into('lib') {
+        from configurations.runtimeClasspath
+    }
+}

@@ -8,6 +8,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -92,18 +94,20 @@ class FrameTest {
     class UpdateMetadata {
 
         @Test
-        @DisplayName("제목·설명·배경·프리뷰만 바꾸고 타입·소유자·시스템 여부는 건드리지 않는다")
+        @DisplayName("제목·설명·배경·프리뷰·누끼만 바꾸고 타입·소유자·시스템 여부는 건드리지 않는다")
         void changesOnlyMetadata() {
             User user = user();
             Frame frame = Frame.owned(user, "옛 제목", "옛 설명", "uploads/old.png", FrameType.CLASSIC, COLOR);
             BackgroundAttributes newBackground = new BackgroundAttributes.Image("uploads/bg.png", 0.8, null);
 
-            frame.updateMetadata("새 제목", "새 설명", newBackground, "uploads/new.png");
+            frame.updateMetadata("새 제목", "새 설명", newBackground, "uploads/new.png",
+                    List.of(true, true, false, false));
 
             assertThat(frame.getTitle()).isEqualTo("새 제목");
             assertThat(frame.getDescription()).isEqualTo("새 설명");
             assertThat(frame.getBackground()).isEqualTo(newBackground);
             assertThat(frame.getPreviewKey()).isEqualTo("uploads/new.png");
+            assertThat(frame.getCellCutouts()).containsExactly(true, true, false, false);
             // 안 바꾸는 것 — frameType 변경은 좌표 전제가 무너지므로 수정 경로에 존재하지 않는다
             assertThat(frame.getFrameType()).isEqualTo(FrameType.CLASSIC);
             assertThat(frame.getUser()).isSameAs(user);

@@ -6,6 +6,7 @@ import com.harucut.storage.config.AwsProperties;
 import com.harucut.storage.dto.PresignedUploadResponse;
 import com.harucut.storage.enums.ContentType;
 import com.harucut.storage.enums.UploadType;
+import com.harucut.storage.strategy.FourcutSourceUploadPathStrategy;
 import com.harucut.storage.strategy.FrameComponentUploadPathStrategy;
 import com.harucut.storage.strategy.FrameUploadPathStrategy;
 import com.harucut.storage.strategy.ProfileUploadPathStrategy;
@@ -61,7 +62,8 @@ class S3FileStorageServiceTest {
         service = new S3FileStorageService(s3Presigner, s3Client, properties(), List.of(
                 new ProfileUploadPathStrategy(),
                 new FrameUploadPathStrategy(),
-                new FrameComponentUploadPathStrategy()));
+                new FrameComponentUploadPathStrategy(),
+                new FourcutSourceUploadPathStrategy()));
     }
 
     @AfterEach
@@ -90,6 +92,16 @@ class S3FileStorageServiceTest {
                     .doesNotContain("webm");
             assertThat(upload(UploadType.FRAME_COMPONENT, "sticker.png", ContentType.PNG).key())
                     .contains("/components/");
+        }
+
+        @Test
+        @DisplayName("FOURCUT_SOURCE는 결과물과 분리된 fourcuts/sources/ 아래에 생긴다")
+        void fourcutSourceKeyShape() {
+            PresignedUploadResponse response =
+                    upload(UploadType.FOURCUT_SOURCE, "shot1.jpg", ContentType.JPEG);
+
+            assertThat(response.key())
+                    .matches("uploads/users/" + PUBLIC_ID + "/fourcuts/sources/[0-9a-f\\-]{36}\\.jpg");
         }
 
         @Test
@@ -235,6 +247,6 @@ class S3FileStorageServiceTest {
     }
 
     private AwsProperties properties() {
-        return new AwsProperties("ap-northeast-2", new AwsProperties.S3(BUCKET));
+        return new AwsProperties("ap-northeast-2", new AwsProperties.S3(BUCKET), null);
     }
 }

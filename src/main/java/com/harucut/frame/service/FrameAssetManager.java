@@ -1,15 +1,13 @@
 package com.harucut.frame.service;
 
 import com.harucut.frame.enums.ComponentType;
-import com.harucut.storage.event.S3DeleteEvent;
 import com.harucut.storage.service.FileStorageService;
+import com.harucut.storage.service.S3Deleter;
 import com.harucut.storage.util.S3Keys;
 import lombok.RequiredArgsConstructor;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 
 import java.util.Collection;
-import java.util.List;
 
 // 프레임이 참조하는 S3 자산의 경계 담당: 저장 전 key 정규화, 응답 시 presign, 커밋 후 삭제 예약.
 // 관리 대상(uploads/ 아래)만 손댄다 — PHOTO 외 컴포넌트(STICKER=정적 경로, TEXT=본문 텍스트)와
@@ -19,7 +17,7 @@ import java.util.List;
 public class FrameAssetManager {
 
     private final FileStorageService fileStorageService;
-    private final ApplicationEventPublisher eventPublisher;
+    private final S3Deleter s3Deleter;
 
     // 저장 직전: PHOTO의 source만 순수 key로. presigned URL이 들어와도 key만 남긴다
     public String normalizeSource(ComponentType type, String source) {
@@ -46,16 +44,9 @@ public class FrameAssetManager {
         return presignIfManaged(pathOrKey);
     }
 
-    // 커밋 후 삭제 예약 — 이 메서드는 아무것도 지우지 않는다. null·비관리 key는 걸러서 받는다
+    // 커밋 후 삭제 예약 — 거르기와 발행은 storage 공용 부품이 한다 (media와 공유)
     public void deleteAfterCommit(Collection<String> keys) {
-        List<String> managed = keys.stream()
-                .filter(S3Keys::isManagedKey)
-                .distinct()
-                .toList();
-        if (managed.isEmpty()) {
-            return;
-        }
-        eventPublisher.publishEvent(new S3DeleteEvent(managed));
+        s3Deleter.deleteAfterCommit(keys);
     }
 
     private String presignIfManaged(String source) {
