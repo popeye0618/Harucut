@@ -80,4 +80,68 @@ class S3KeysTest {
                     .isEqualTo(GlobalErrorCode.INVALID_INPUT_VALUE);
         }
     }
+
+    @Nested
+    @DisplayName("normalizeManagedKey — 실패 없는 관대한 정규화")
+    class NormalizeManagedKey {
+
+        @Test
+        @DisplayName("우리 버킷 URL(쿼리스트링 포함)은 순수 key가 된다")
+        void managedUrlBecomesKey() {
+            String presignedUrl = "https://harucut-test.s3.ap-northeast-2.amazonaws.com/" + KEY
+                    + "?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=abc";
+
+            assertThat(S3Keys.normalizeManagedKey(presignedUrl)).isEqualTo(KEY);
+        }
+
+        @Test
+        @DisplayName("외부 URL은 파괴하지 않고 원본 그대로 돌려준다 — normalizeToKey와의 결정적 차이")
+        void externalUrlSurvives() {
+            String external = "https://cdn.example.com/stickers/heart.png";
+
+            assertThat(S3Keys.normalizeManagedKey(external)).isEqualTo(external);
+        }
+
+        @Test
+        @DisplayName("s3:// 스킴에서는 key를 추출한다")
+        void extractsFromS3Scheme() {
+            assertThat(S3Keys.normalizeManagedKey("s3://harucut-test/" + KEY)).isEqualTo(KEY);
+        }
+
+        @Test
+        @DisplayName("이미 key인 입력은 그대로, 앞 슬래시만 뗀다")
+        void keyPassesThrough() {
+            assertThat(S3Keys.normalizeManagedKey(KEY)).isEqualTo(KEY);
+            assertThat(S3Keys.normalizeManagedKey("/" + KEY)).isEqualTo(KEY);
+        }
+
+        @Test
+        @DisplayName("null과 빈 값은 예외 없이 그대로 돌려준다")
+        void nullAndBlankPassThrough() {
+            assertThat(S3Keys.normalizeManagedKey(null)).isNull();
+            assertThat(S3Keys.normalizeManagedKey("  ")).isEqualTo("  ");
+        }
+
+        @Test
+        @DisplayName("깨진 URL도 예외 없이 원본을 돌려준다 — 이 연산에 실패는 없다")
+        void malformedUrlSurvives() {
+            String broken = "https://harucut test/브로큰 url";
+
+            assertThat(S3Keys.normalizeManagedKey(broken)).isEqualTo(broken);
+        }
+    }
+
+    @Nested
+    @DisplayName("isManagedKey")
+    class IsManagedKey {
+
+        @Test
+        @DisplayName("uploads/ 아래만 관리 대상이다")
+        void onlyUploadRootIsManaged() {
+            assertThat(S3Keys.isManagedKey(KEY)).isTrue();
+            assertThat(S3Keys.isManagedKey("https://cdn.example.com/x.png")).isFalse();
+            assertThat(S3Keys.isManagedKey("static/stickers/heart.png")).isFalse();
+            assertThat(S3Keys.isManagedKey(null)).isFalse();
+        }
+    }
 }
