@@ -1,8 +1,10 @@
 package com.harucut.config;
 
 import com.harucut.media.compose.FourcutRenderer;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import software.amazon.awssdk.services.lambda.LambdaClient;
 
 @Configuration
 public class ComposeConfig {
@@ -12,5 +14,12 @@ public class ComposeConfig {
     @Bean
     public FourcutRenderer fourcutRenderer() {
         return new FourcutRenderer();
+    }
+
+    // region·자격증명은 S3와 같은 기본 체인. lambda 실행기를 켰을 때만 만든다
+    @Bean
+    @ConditionalOnProperty(name = "compose.executor", havingValue = "lambda")
+    public LambdaClient lambdaClient() {
+        return LambdaClient.create();
     }
 }

@@ -247,6 +247,6 @@ class S3FileStorageServiceTest {
     }
 
     private AwsProperties properties() {
-        return new AwsProperties("ap-northeast-2", new AwsProperties.S3(BUCKET));
+        return new AwsProperties("ap-northeast-2", new AwsProperties.S3(BUCKET), null);
     }
 }
