@@ -89,7 +89,8 @@ public class FrameComponentAssembler {
     public Frame assembleOwned(User user, FrameCreateRequest request) {
         Frame frame = Frame.owned(user, request.title(), request.descriptionOrEmpty(),
                 frameAssetManager.normalizeImageKey(request.previewKey()),
-                request.frameType(), normalizeBackground(request.background()));
+                request.frameType(), normalizeBackground(request.background()),
+                request.cellCutouts());
         createComponents(request.components()).forEach(frame::addComponent);
         return frame;
     }
@@ -97,7 +98,8 @@ public class FrameComponentAssembler {
     public Frame assembleSystem(FrameCreateRequest request) {
         Frame frame = Frame.system(request.title(), request.descriptionOrEmpty(),
                 frameAssetManager.normalizeImageKey(request.previewKey()),
-                request.frameType(), normalizeBackground(request.background()));
+                request.frameType(), normalizeBackground(request.background()),
+                request.cellCutouts());
         createComponents(request.components()).forEach(frame::addComponent);
         return frame;
     }
@@ -111,7 +113,8 @@ public class FrameComponentAssembler {
 
         BackgroundAttributes newBackground = normalizeBackground(request.background());
         String newPreviewKey = frameAssetManager.normalizeImageKey(request.previewKey());
-        frame.updateMetadata(request.title(), request.descriptionOrEmpty(), newBackground, newPreviewKey);
+        frame.updateMetadata(request.title(), request.descriptionOrEmpty(), newBackground,
+                newPreviewKey, request.cellCutouts());
 
         frame.clearComponents();
         List<FrameComponent> newComponents = createComponents(request.components());

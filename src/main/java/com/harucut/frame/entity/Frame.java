@@ -3,6 +3,7 @@ package com.harucut.frame.entity;
 import com.harucut.common.entity.BaseEntity;
 import com.harucut.frame.attributes.BackgroundAttributes;
 import com.harucut.frame.converter.BackgroundConverter;
+import com.harucut.frame.converter.CellCutoutsConverter;
 import com.harucut.frame.enums.FrameType;
 import com.harucut.user.entity.User;
 import jakarta.persistence.*;
@@ -42,6 +43,12 @@ public class Frame extends BaseEntity {
     @Column(nullable = false, length = 4000)
     private BackgroundAttributes background;
 
+    // 셀 누끼(칸별 비네트 장식) 토글 — 항상 정확히 4개, 촬영 슬롯 순서.
+    // 합성기가 읽고, 편집기가 저장 프레임을 다시 열 때 토글을 복원하도록 응답에도 나간다
+    @Convert(converter = CellCutoutsConverter.class)
+    @Column(name = "cell_cutouts", length = 64)
+    private List<Boolean> cellCutouts;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")
     private User user;
@@ -52,36 +59,63 @@ public class Frame extends BaseEntity {
     @OneToMany(mappedBy = "frame", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<FrameComponent> components = new ArrayList<>();
 
-    private Frame(String title, String description, String previewKey,
-                  FrameType frameType, BackgroundAttributes background, User user, boolean isSystem) {
+    private Frame(String title, String description, String previewKey, FrameType frameType,
+                  BackgroundAttributes background, List<Boolean> cellCutouts,
+                  User user, boolean isSystem) {
         this.title = title;
         this.description = description;
         this.previewKey = previewKey;
         this.frameType = frameType;
         this.background = background;
+        this.cellCutouts = normalizeCellCutouts(cellCutouts);
         this.user = user;
         this.isSystem = isSystem;
     }
 
     public static Frame owned(User user, String title, String description, String previewKey,
                               FrameType frameType, BackgroundAttributes background) {
+        return owned(user, title, description, previewKey, frameType, background, null);
+    }
+
+    public static Frame owned(User user, String title, String description, String previewKey,
+                              FrameType frameType, BackgroundAttributes background,
+                              List<Boolean> cellCutouts) {
         if (user == null) {
             throw new IllegalArgumentException("사용자 프레임에는 소유자가 필요하다");
         }
-        return new Frame(title, description, previewKey, frameType, background, user, false);
+        return new Frame(title, description, previewKey, frameType, background, cellCutouts,
+                user, false);
     }
 
     public static Frame system(String title, String description, String previewKey,
                                FrameType frameType, BackgroundAttributes background) {
-        return new Frame(title, description, previewKey, frameType, background, null, true);
+        return system(title, description, previewKey, frameType, background, null);
     }
 
-    public void updateMetadata(String title, String description,
-                               BackgroundAttributes background, String previewKey) {
+    public static Frame system(String title, String description, String previewKey,
+                               FrameType frameType, BackgroundAttributes background,
+                               List<Boolean> cellCutouts) {
+        return new Frame(title, description, previewKey, frameType, background, cellCutouts,
+                null, true);
+    }
+
+    public void updateMetadata(String title, String description, BackgroundAttributes background,
+                               String previewKey, List<Boolean> cellCutouts) {
         this.title = title;
         this.description = description;
         this.background = background;
         this.previewKey = previewKey;
+        this.cellCutouts = normalizeCellCutouts(cellCutouts);
+    }
+
+    // cellCutouts 불변식의 소유자 — 어떤 입력이 와도 "정확히 4개, null 없음"으로 만든다.
+    // 쓰기(생성·수정)와 읽기(CellCutoutsConverter)가 같은 규칙을 공유한다
+    public static List<Boolean> normalizeCellCutouts(List<Boolean> raw) {
+        List<Boolean> result = new ArrayList<>(4);
+        for (int i = 0; i < 4; i++) {
+            result.add(raw != null && i < raw.size() && Boolean.TRUE.equals(raw.get(i)));
+        }
+        return List.copyOf(result);
     }
 
     public void addComponent(FrameComponent component) {

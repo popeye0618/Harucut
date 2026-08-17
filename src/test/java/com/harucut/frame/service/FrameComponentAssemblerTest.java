@@ -252,6 +252,19 @@ class FrameComponentAssemblerTest {
         }
 
         @Test
+        @DisplayName("셀 누끼 토글이 응답에 그대로 실린다 — 편집기 재오픈 시 복원용")
+        void cellCutoutsIncluded() {
+            given(frameAssetManager.resolveImageSource(PREVIEW_KEY)).willReturn("https://preview");
+            Frame frame = Frame.system("기본", "설명", PREVIEW_KEY, FrameType.CLASSIC,
+                    new BackgroundAttributes.Color("#FFE4E1"),
+                    List.of(true, false, false, false));
+
+            FrameResponse response = assembler.toFrameResponse(frame);
+
+            assertThat(response.cellCutouts()).containsExactly(true, false, false, false);
+        }
+
+        @Test
         @DisplayName("IMAGE 배경에는 presigned url이 주입돼 나간다")
         void imageBackgroundGetsUrl() {
             given(frameAssetManager.resolveImageSource(PREVIEW_KEY)).willReturn("https://preview");
@@ -276,7 +289,8 @@ class FrameComponentAssemblerTest {
             User user = User.localUser("user@harucut.com", "encoded", "하루컷");
             given(frameAssetManager.normalizeImageKey("preview-url")).willReturn(PREVIEW_KEY);
             FrameCreateRequest request = new FrameCreateRequest("제목", null, "preview-url",
-                    FrameType.CLASSIC, null, null, new BackgroundAttributes.Color("#FFF"), null);
+                    FrameType.CLASSIC, null, null, new BackgroundAttributes.Color("#FFF"),
+                    List.of(true, false, false, true), null);
 
             Frame frame = assembler.assembleOwned(user, request);
 
@@ -285,6 +299,7 @@ class FrameComponentAssemblerTest {
             assertThat(frame.getPreviewKey()).isEqualTo(PREVIEW_KEY);
             assertThat(frame.getDescription()).isEmpty();
             assertThat(frame.getBackground()).isEqualTo(new BackgroundAttributes.Color("#FFF"));
+            assertThat(frame.getCellCutouts()).containsExactly(true, false, false, true);
         }
 
         @Test
@@ -293,7 +308,7 @@ class FrameComponentAssemblerTest {
             given(frameAssetManager.normalizeImageKey("preview-url")).willReturn(PREVIEW_KEY);
             given(frameAssetManager.normalizeSource(ComponentType.PHOTO, PHOTO_URL)).willReturn(PHOTO_KEY);
             FrameCreateRequest request = new FrameCreateRequest("기본", "설명", "preview-url",
-                    FrameType.CLASSIC, null, null, new BackgroundAttributes.Color("#FFF"),
+                    FrameType.CLASSIC, null, null, new BackgroundAttributes.Color("#FFF"), null,
                     List.of(componentRequest(ComponentType.PHOTO, PHOTO_URL)));
 
             Frame frame = assembler.assembleSystem(request);
@@ -318,7 +333,7 @@ class FrameComponentAssemblerTest {
             frame.addComponent(component(ComponentType.PHOTO, "uploads/kept.png"));
             FrameCreateRequest request = new FrameCreateRequest("새 제목", null, "new-preview-url",
                     FrameType.CLASSIC, null, null,
-                    new BackgroundAttributes.Image("new-bg-url", 0.5, null),
+                    new BackgroundAttributes.Image("new-bg-url", 0.5, null), null,
                     List.of(componentRequest(ComponentType.PHOTO, "uploads/kept.png"),
                             componentRequest(ComponentType.PHOTO, "uploads/new1.png")));
             given(frameAssetManager.normalizeImageKey("new-bg-url")).willReturn("uploads/new-bg.png");
@@ -349,7 +364,7 @@ class FrameComponentAssemblerTest {
             frame.addComponent(textComponent("봄", "uploads/text-old.png"));
             frame.addComponent(textComponent("여름", "uploads/text-kept.png"));
             FrameCreateRequest request = new FrameCreateRequest("제목", null, PREVIEW_KEY,
-                    FrameType.CLASSIC, null, null, new BackgroundAttributes.Color("#FFE4E1"),
+                    FrameType.CLASSIC, null, null, new BackgroundAttributes.Color("#FFE4E1"), null,
                     List.of(componentRequest(ComponentType.TEXT, "봄", "uploads/text-new.png"),
                             componentRequest(ComponentType.TEXT, "여름", "uploads/text-kept.png")));
             given(frameAssetManager.normalizeImageKey(PREVIEW_KEY)).willReturn(PREVIEW_KEY);
@@ -375,7 +390,7 @@ class FrameComponentAssemblerTest {
             frame.addComponent(component(ComponentType.PHOTO, "uploads/kept.png"));
             FrameCreateRequest request = new FrameCreateRequest("제목", null, "uploads/preview.png",
                     FrameType.CLASSIC, null, null,
-                    new BackgroundAttributes.Image("uploads/bg.png", 0.8, null),
+                    new BackgroundAttributes.Image("uploads/bg.png", 0.8, null), null,
                     List.of(componentRequest(ComponentType.PHOTO, "uploads/kept.png")));
             given(frameAssetManager.normalizeImageKey("uploads/bg.png")).willReturn("uploads/bg.png");
             given(frameAssetManager.normalizeImageKey("uploads/preview.png")).willReturn("uploads/preview.png");
@@ -387,6 +402,22 @@ class FrameComponentAssemblerTest {
             ArgumentCaptor<Collection<String>> captor = ArgumentCaptor.captor();
             then(frameAssetManager).should().deleteAfterCommit(captor.capture());
             assertThat(captor.getValue()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("전체 교체는 셀 누끼 토글도 갱신한다")
+        void replacesCellCutouts() {
+            Frame frame = Frame.system("제목", "설명", PREVIEW_KEY, FrameType.CLASSIC,
+                    new BackgroundAttributes.Color("#FFE4E1"),
+                    List.of(true, true, true, true));
+            FrameCreateRequest request = new FrameCreateRequest("제목", null, PREVIEW_KEY,
+                    FrameType.CLASSIC, null, null, new BackgroundAttributes.Color("#FFE4E1"),
+                    List.of(false, true, true, false), null);
+            given(frameAssetManager.normalizeImageKey(PREVIEW_KEY)).willReturn(PREVIEW_KEY);
+
+            assembler.replaceContent(frame, request);
+
+            assertThat(frame.getCellCutouts()).containsExactly(false, true, true, false);
         }
     }
 

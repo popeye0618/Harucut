@@ -7,6 +7,7 @@ import com.harucut.frame.enums.FrameType;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
 import java.util.List;
 import java.util.Map;
@@ -21,6 +22,8 @@ public record FrameCreateRequest(
         Integer canvasWidth,
         Integer canvasHeight,
         @NotNull BackgroundAttributes background,
+        // 셀 누끼(칸별 비네트) 토글, 촬영 슬롯 순서. 선택 — 안 보내면 전부 끔
+        @Size(min = 4, max = 4) List<Boolean> cellCutouts,
         @Valid List<ComponentRequest> components
 ) {
 
