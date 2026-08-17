@@ -3,7 +3,11 @@ package com.harucut.media.compose;
 import com.harucut.frame.attributes.BackgroundAttributes;
 import com.harucut.frame.layout.FrameLayout;
 
+import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
+import javax.imageio.ImageWriteParam;
+import javax.imageio.ImageWriter;
+import javax.imageio.stream.ImageOutputStream;
 import java.awt.AlphaComposite;
 import java.awt.BasicStroke;
 import java.awt.Color;
@@ -24,6 +28,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.Comparator;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
@@ -48,7 +53,11 @@ public class FourcutRenderer {
     private static final float CUTOUT_RING_WIDTH = 10f;
     private static final Color CUTOUT_RING = new Color(0x1E, 0xD7, 0x60);
 
-    public byte[] render(ComposeSpec spec, List<byte[]> sourcePhotos, Map<String, byte[]> assets) {
+    // 썸네일 규격 — 긴 변 512, JPEG 품질 0.8 (사진 위주라 PNG 축소본은 여전히 크다)
+    private static final int THUMBNAIL_LONG_EDGE = 512;
+    private static final float THUMBNAIL_JPEG_QUALITY = 0.8f;
+
+    public RenderResult render(ComposeSpec spec, List<byte[]> sourcePhotos, Map<String, byte[]> assets) {
         if (sourcePhotos == null || sourcePhotos.size() != spec.slots().size()) {
             throw new IllegalArgumentException("원본 사진 수가 슬롯 수와 다르다");
         }
@@ -65,7 +74,7 @@ public class FourcutRenderer {
         } finally {
             g.dispose();
         }
-        return encodePng(canvas);
+        return new RenderResult(encodePng(canvas), encodeThumbnail(canvas));
     }
 
     // ── 그리기 순서 1: 배경 (색 → 이미지) ──────────────────────
@@ -227,6 +236,65 @@ public class FourcutRenderer {
             }
         } catch (IOException e) {
             throw new UncheckedIOException("PNG 인코딩 실패", e);
+        }
+        return out.toByteArray();
+    }
+
+    // ── 썸네일 — 목록 그리드용 축소본 ──────────────────────
+
+    private static byte[] encodeThumbnail(BufferedImage canvas) {
+        return encodeJpeg(scaleToLongEdge(canvas, THUMBNAIL_LONG_EDGE));
+    }
+
+    // 절반씩 반복 축소 — 10배급 축소를 bilinear 한 번에 하면 보간이 인접 픽셀만 보고
+    // 나머지를 버려서 가는 선이 자글자글해진다. 보간이 잘 듣는 배율(≤2배)만 쓰도록 나눠 줄인다.
+    // 원본이 목표보다 작으면 확대하지 않는다 — 썸네일이 원본보다 클 이유가 없다
+    private static BufferedImage scaleToLongEdge(BufferedImage source, int longEdge) {
+        double ratio = Math.min(1.0,
+                (double) longEdge / Math.max(source.getWidth(), source.getHeight()));
+        int targetWidth = Math.max(1, (int) Math.round(source.getWidth() * ratio));
+        int targetHeight = Math.max(1, (int) Math.round(source.getHeight() * ratio));
+
+        BufferedImage current = source;
+        while (current.getWidth() / 2 >= targetWidth && current.getHeight() / 2 >= targetHeight) {
+            current = drawScaled(current, current.getWidth() / 2, current.getHeight() / 2);
+        }
+        return drawScaled(current, targetWidth, targetHeight);
+    }
+
+    // JPEG은 알파 채널을 못 다룬다(ARGB를 그대로 쓰면 예외나 색 왜곡) — RGB 캔버스에
+    // 다시 그리며 알파를 버린다. 합성 결과는 배경이 항상 칠해져 있어 잃는 픽셀이 없다
+    private static BufferedImage drawScaled(BufferedImage source, int width, int height) {
+        BufferedImage scaled = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = scaled.createGraphics();
+        try {
+            applyQualityHints(g);
+            g.drawImage(source, 0, 0, width, height, null);
+        } finally {
+            g.dispose();
+        }
+        return scaled;
+    }
+
+    // 품질 지정은 ImageIO.write 기본 경로로는 안 된다 — writer의 압축 파라미터를 직접 만진다
+    private static byte[] encodeJpeg(BufferedImage image) {
+        Iterator<ImageWriter> writers = ImageIO.getImageWritersByFormatName("jpg");
+        if (!writers.hasNext()) {
+            throw new IllegalStateException("JPEG 인코더를 찾을 수 없다");
+        }
+        ImageWriter writer = writers.next();
+        ImageWriteParam param = writer.getDefaultWriteParam();
+        param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
+        param.setCompressionQuality(THUMBNAIL_JPEG_QUALITY);
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (ImageOutputStream stream = ImageIO.createImageOutputStream(out)) {
+            writer.setOutput(stream);
+            writer.write(null, new IIOImage(image, null, null), param);
+        } catch (IOException e) {
+            throw new UncheckedIOException("JPEG 인코딩 실패", e);
+        } finally {
+            writer.dispose();
         }
         return out.toByteArray();
     }

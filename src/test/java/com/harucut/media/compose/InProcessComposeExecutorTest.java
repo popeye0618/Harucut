@@ -30,7 +30,10 @@ class InProcessComposeExecutorTest {
     private static final List<String> SOURCE_KEYS = List.of(
             "uploads/u/s1.jpg", "uploads/u/s2.jpg", "uploads/u/s3.jpg", "uploads/u/s4.jpg");
     private static final String RESULT_KEY = "uploads/u/fourcuts/job-5.png";
+    private static final String THUMB_KEY = "uploads/u/fourcuts/job-5-thumb.jpg";
     private static final byte[] PNG = {1, 2, 3};
+    private static final byte[] THUMB = {9};
+    private static final RenderResult RESULT = new RenderResult(PNG, THUMB);
 
     @Mock
     private FileStorageService fileStorageService;
@@ -51,9 +54,9 @@ class InProcessComposeExecutorTest {
         ComposeSpec spec = spec(new BackgroundAttributes.Color("#FFF"), List.of());
         SOURCE_KEYS.forEach(key ->
                 given(fileStorageService.downloadBytes(key)).willReturn(key.getBytes()));
-        given(fourcutRenderer.render(eq(spec), anyList(), anyMap())).willReturn(PNG);
+        given(fourcutRenderer.render(eq(spec), anyList(), anyMap())).willReturn(RESULT);
 
-        executor.execute(spec, SOURCE_KEYS, RESULT_KEY);
+        executor.execute(spec, SOURCE_KEYS, RESULT_KEY, THUMB_KEY);
 
         ArgumentCaptor<List<byte[]>> captor = ArgumentCaptor.captor();
         then(fourcutRenderer).should().render(eq(spec), captor.capture(), anyMap());
@@ -70,9 +73,9 @@ class InProcessComposeExecutorTest {
                         layer("uploads/u/text.png", 3)));
         given(fileStorageService.downloadBytes(any())).willAnswer(inv ->
                 ((String) inv.getArgument(0)).getBytes());
-        given(fourcutRenderer.render(eq(spec), anyList(), anyMap())).willReturn(PNG);
+        given(fourcutRenderer.render(eq(spec), anyList(), anyMap())).willReturn(RESULT);
 
-        executor.execute(spec, SOURCE_KEYS, RESULT_KEY);
+        executor.execute(spec, SOURCE_KEYS, RESULT_KEY, THUMB_KEY);
 
         ArgumentCaptor<Map<String, byte[]>> captor = ArgumentCaptor.captor();
         then(fourcutRenderer).should().render(eq(spec), anyList(), captor.capture());
@@ -87,24 +90,25 @@ class InProcessComposeExecutorTest {
         ComposeSpec spec = spec(new BackgroundAttributes.Color("#FFF"), List.of());
         SOURCE_KEYS.forEach(key ->
                 given(fileStorageService.downloadBytes(key)).willReturn(PNG));
-        given(fourcutRenderer.render(eq(spec), anyList(), anyMap())).willReturn(PNG);
+        given(fourcutRenderer.render(eq(spec), anyList(), anyMap())).willReturn(RESULT);
 
-        executor.execute(spec, SOURCE_KEYS, RESULT_KEY);
+        executor.execute(spec, SOURCE_KEYS, RESULT_KEY, THUMB_KEY);
 
         then(fileStorageService).should(times(4)).downloadBytes(any());
     }
 
     @Test
-    @DisplayName("렌더 결과를 resultKey에 image/png로 올린다")
-    void resultUploadedAsPng() {
+    @DisplayName("원본은 resultKey에 image/png로, 썸네일은 thumbnailKey에 image/jpeg으로 올린다")
+    void bothOutputsUploaded() {
         ComposeSpec spec = spec(new BackgroundAttributes.Color("#FFF"), List.of());
         SOURCE_KEYS.forEach(key ->
                 given(fileStorageService.downloadBytes(key)).willReturn(PNG));
-        given(fourcutRenderer.render(eq(spec), anyList(), anyMap())).willReturn(PNG);
+        given(fourcutRenderer.render(eq(spec), anyList(), anyMap())).willReturn(RESULT);
 
-        executor.execute(spec, SOURCE_KEYS, RESULT_KEY);
+        executor.execute(spec, SOURCE_KEYS, RESULT_KEY, THUMB_KEY);
 
         then(fileStorageService).should().uploadBytes(RESULT_KEY, PNG, "image/png");
+        then(fileStorageService).should().uploadBytes(THUMB_KEY, THUMB, "image/jpeg");
     }
 
     // ── fixtures ──────────────────────────────

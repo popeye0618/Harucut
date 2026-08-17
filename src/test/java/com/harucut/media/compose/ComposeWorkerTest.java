@@ -29,6 +29,7 @@ class ComposeWorkerTest {
     private static final List<String> SOURCE_KEYS = List.of(
             "uploads/u/1.jpg", "uploads/u/2.jpg", "uploads/u/3.jpg", "uploads/u/4.jpg");
     private static final String RESULT_KEY = "uploads/u/fourcuts/job-5.png";
+    private static final String THUMB_KEY = "uploads/u/fourcuts/job-5-thumb.jpg";
 
     @Mock
     private ComposeExecutor composeExecutor;
@@ -49,8 +50,8 @@ class ComposeWorkerTest {
         worker.handle(event());
 
         InOrder order = inOrder(composeExecutor, composeService);
-        order.verify(composeExecutor).execute(event().spec(), SOURCE_KEYS, RESULT_KEY);
-        order.verify(composeService).completeJob(JOB_ID, RESULT_KEY);
+        order.verify(composeExecutor).execute(event().spec(), SOURCE_KEYS, RESULT_KEY, THUMB_KEY);
+        order.verify(composeService).completeJob(JOB_ID, RESULT_KEY, THUMB_KEY);
         then(composeService).should(never()).failJob(any(), anyString());
     }
 
@@ -58,19 +59,19 @@ class ComposeWorkerTest {
     @DisplayName("실행이 죽으면 실패로 기록하고 완료는 부르지 않는다")
     void executionFailureRecorded() {
         willThrow(new IllegalStateException("S3 다운로드 실패"))
-                .given(composeExecutor).execute(any(), any(), any());
+                .given(composeExecutor).execute(any(), any(), any(), any());
 
         worker.handle(event());
 
         then(composeService).should().failJob(JOB_ID, "S3 다운로드 실패");
-        then(composeService).should(never()).completeJob(any(), any());
+        then(composeService).should(never()).completeJob(any(), any(), any());
     }
 
     @Test
     @DisplayName("완료 기록이 죽어도 실패 기록을 시도한다")
     void completionFailureFallsBackToFail() {
         willThrow(new IllegalStateException("DB 오류"))
-                .given(composeService).completeJob(JOB_ID, RESULT_KEY);
+                .given(composeService).completeJob(JOB_ID, RESULT_KEY, THUMB_KEY);
 
         worker.handle(event());
 
@@ -81,7 +82,7 @@ class ComposeWorkerTest {
     @DisplayName("실패 기록마저 죽어도 워커는 터지지 않는다 — 로그만 남기고 삼킨다")
     void failRecordingFailureSwallowed() {
         willThrow(new IllegalStateException("실행 실패"))
-                .given(composeExecutor).execute(any(), any(), any());
+                .given(composeExecutor).execute(any(), any(), any(), any());
         willThrow(new IllegalStateException("DB도 죽음"))
                 .given(composeService).failJob(any(), anyString());
 
@@ -93,6 +94,6 @@ class ComposeWorkerTest {
                 new ComposeSpec(2000, 6000, new BackgroundAttributes.Color("#FFF"),
                         FrameType.CLASSIC.getLayout().slots(),
                         List.of(false, false, false, false), List.of()),
-                SOURCE_KEYS, RESULT_KEY);
+                SOURCE_KEYS, RESULT_KEY, THUMB_KEY);
     }
 }

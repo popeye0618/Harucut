@@ -34,6 +34,7 @@ class LambdaComposeExecutorTest {
     private static final List<String> SOURCE_KEYS = List.of(
             "uploads/u/1.jpg", "uploads/u/2.jpg", "uploads/u/3.jpg", "uploads/u/4.jpg");
     private static final String RESULT_KEY = "uploads/u/fourcuts/job-5.png";
+    private static final String THUMB_KEY = "uploads/u/fourcuts/job-5-thumb.jpg";
 
     @Mock
     private LambdaClient lambdaClient;
@@ -45,7 +46,7 @@ class LambdaComposeExecutorTest {
         given(lambdaClient.invoke(any(InvokeRequest.class)))
                 .willReturn(InvokeResponse.builder().statusCode(200).build());
 
-        executor.execute(spec(), SOURCE_KEYS, RESULT_KEY);
+        executor.execute(spec(), SOURCE_KEYS, RESULT_KEY, THUMB_KEY);
 
         ArgumentCaptor<InvokeRequest> captor = ArgumentCaptor.captor();
         then(lambdaClient).should().invoke(captor.capture());
@@ -57,6 +58,7 @@ class LambdaComposeExecutorTest {
         assertThat(payload.bucket()).isEqualTo("harucut-test");
         assertThat(payload.sourceKeys()).containsExactlyElementsOf(SOURCE_KEYS);
         assertThat(payload.resultKey()).isEqualTo(RESULT_KEY);
+        assertThat(payload.thumbnailKey()).isEqualTo(THUMB_KEY);
         assertThat(payload.spec()).isEqualTo(spec());
     }
 
@@ -71,7 +73,7 @@ class LambdaComposeExecutorTest {
                         .payload(SdkBytes.fromUtf8String("{\"errorMessage\":\"OOM\"}"))
                         .build());
 
-        assertThatThrownBy(() -> executor.execute(spec(), SOURCE_KEYS, RESULT_KEY))
+        assertThatThrownBy(() -> executor.execute(spec(), SOURCE_KEYS, RESULT_KEY, THUMB_KEY))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Unhandled");
     }
@@ -83,7 +85,7 @@ class LambdaComposeExecutorTest {
         given(lambdaClient.invoke(any(InvokeRequest.class)))
                 .willReturn(InvokeResponse.builder().statusCode(200).build());
 
-        assertThatCode(() -> executor.execute(spec(), SOURCE_KEYS, RESULT_KEY))
+        assertThatCode(() -> executor.execute(spec(), SOURCE_KEYS, RESULT_KEY, THUMB_KEY))
                 .doesNotThrowAnyException();
     }
 

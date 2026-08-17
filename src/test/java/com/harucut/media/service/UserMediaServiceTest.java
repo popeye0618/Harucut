@@ -26,6 +26,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
@@ -48,6 +49,9 @@ class UserMediaServiceTest {
     private static final String KEY = "uploads/users/AbCdEf12Gh01/fourcuts/photo.png";
     private static final LocalDateTime CREATED = LocalDateTime.of(2026, 7, 20, 10, 0);
     private static final String SIGNED_URL = "https://harucut-test.s3.amazonaws.com/signed";
+    private static final String VIEW_URL = "https://harucut-test.s3.amazonaws.com/view";
+    private static final String THUMB_KEY = "uploads/users/AbCdEf12Gh01/fourcuts/photo-thumb.jpg";
+    private static final String THUMB_URL = "https://harucut-test.s3.amazonaws.com/thumb";
 
     @Mock
     private UserRepository userRepository;
@@ -91,21 +95,45 @@ class UserMediaServiceTest {
     class GetMyMedia {
 
         @Test
-        @DisplayName("cutoff가 없으면(무제한) 전체 쿼리를 쓰고 항목마다 다운로드 URL이 붙는다")
+        @DisplayName("cutoff가 없으면(무제한) 전체 쿼리를 쓰고 항목마다 보기·다운로드 URL이 둘 다 붙는다")
         void unlimitedUsesFullQuery() {
             UserMedia media = media();
             given(userRepository.findByPublicId(PUBLIC_ID)).willReturn(Optional.of(user));
             given(mediaSubscriptionPolicy.resolveHistoryCutoff(1L)).willReturn(null);
             given(userMediaRepository.findAllByUserOrderByCreatedAtDesc(eq(user), any(Pageable.class)))
                     .willReturn(new PageImpl<>(List.of(media), PageRequest.of(0, 10), 1));
+            given(fileStorageService.generatePresignedGetUrl(KEY)).willReturn(VIEW_URL);
             given(fileStorageService.generatePresignedDownloadUrl(KEY, "이름.png")).willReturn(SIGNED_URL);
 
             PageResponse<UserMediaResponse> result = userMediaService.getMyMedia(PUBLIC_ID, 0, 10);
 
             assertThat(result.content()).singleElement()
-                    .satisfies(item -> assertThat(item.downloadUrl()).isEqualTo(SIGNED_URL));
+                    .satisfies(item -> {
+                        assertThat(item.viewUrl()).isEqualTo(VIEW_URL);
+                        assertThat(item.downloadUrl()).isEqualTo(SIGNED_URL);
+                        // 썸네일이 없는 행은 서명 시도조차 없어야 한다
+                        assertThat(item.thumbnailUrl()).isNull();
+                    });
             then(userMediaRepository).should(never())
                     .findAllByUserAndCreatedAtGreaterThanEqualOrderByCreatedAtDesc(any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("thumbnailKey가 있으면 thumbnailUrl도 plain GET으로 서명된다")
+        void thumbnailSignedWhenPresent() {
+            UserMedia media = mediaWithThumbnail();
+            given(userRepository.findByPublicId(PUBLIC_ID)).willReturn(Optional.of(user));
+            given(mediaSubscriptionPolicy.resolveHistoryCutoff(1L)).willReturn(null);
+            given(userMediaRepository.findAllByUserOrderByCreatedAtDesc(eq(user), any(Pageable.class)))
+                    .willReturn(new PageImpl<>(List.of(media), PageRequest.of(0, 10), 1));
+            given(fileStorageService.generatePresignedGetUrl(THUMB_KEY)).willReturn(THUMB_URL);
+            given(fileStorageService.generatePresignedGetUrl(KEY)).willReturn(VIEW_URL);
+            given(fileStorageService.generatePresignedDownloadUrl(KEY, "이름.png")).willReturn(SIGNED_URL);
+
+            PageResponse<UserMediaResponse> result = userMediaService.getMyMedia(PUBLIC_ID, 0, 10);
+
+            assertThat(result.content()).singleElement()
+                    .satisfies(item -> assertThat(item.thumbnailUrl()).isEqualTo(THUMB_URL));
         }
 
         @Test
@@ -197,6 +225,7 @@ class UserMediaServiceTest {
             UserMedia media = media();
             given(userRepository.findByPublicId(PUBLIC_ID)).willReturn(Optional.of(user));
             given(userMediaRepository.findByIdAndUser(MEDIA_ID, user)).willReturn(Optional.of(media));
+            given(fileStorageService.generatePresignedGetUrl(KEY)).willReturn(VIEW_URL);
             given(fileStorageService.generatePresignedDownloadUrl(KEY, "my_holiday_photo.png"))
                     .willReturn(SIGNED_URL);
 
@@ -237,10 +266,23 @@ class UserMediaServiceTest {
 
             userMediaService.deleteMedia(PUBLIC_ID, MEDIA_ID);
 
+            // 썸네일 없는 옛 행 — null이 리스트에 실려도 터지지 않아야 한다 (걸러내는 건 S3Deleter 몫)
             InOrder order = inOrder(s3Deleter, userMediaRepository);
-            order.verify(s3Deleter).deleteAfterCommit(List.of(KEY));
+            order.verify(s3Deleter).deleteAfterCommit(Arrays.asList(KEY, null));
             order.verify(userMediaRepository).delete(media);
             then(mediaSubscriptionPolicy).shouldHaveNoInteractions();
+        }
+
+        @Test
+        @DisplayName("썸네일이 있으면 원본과 썸네일 둘 다 삭제 예약된다")
+        void deletesThumbnailToo() {
+            UserMedia media = mediaWithThumbnail();
+            given(userRepository.findByPublicId(PUBLIC_ID)).willReturn(Optional.of(user));
+            given(userMediaRepository.findByIdAndUser(MEDIA_ID, user)).willReturn(Optional.of(media));
+
+            userMediaService.deleteMedia(PUBLIC_ID, MEDIA_ID);
+
+            then(s3Deleter).should().deleteAfterCommit(List.of(KEY, THUMB_KEY));
         }
 
         @Test
@@ -263,6 +305,13 @@ class UserMediaServiceTest {
 
     private UserMedia media() {
         UserMedia media = UserMedia.of(user, KEY, "이름.png");
+        ReflectionTestUtils.setField(media, "id", MEDIA_ID);
+        ReflectionTestUtils.setField(media, "createdAt", CREATED);
+        return media;
+    }
+
+    private UserMedia mediaWithThumbnail() {
+        UserMedia media = UserMedia.of(user, KEY, THUMB_KEY, "이름.png");
         ReflectionTestUtils.setField(media, "id", MEDIA_ID);
         ReflectionTestUtils.setField(media, "createdAt", CREATED);
         return media;

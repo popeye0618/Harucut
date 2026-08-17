@@ -201,6 +201,75 @@ class FourcutRendererTest {
     }
 
     @Nested
+    @DisplayName("썸네일 — 원본과 함께 나오는 축소본")
+    class Thumbnail {
+
+        @Test
+        @DisplayName("세로형(600x1800)은 긴 변이 512로 줄고 비율이 유지된다 — 171x512")
+        void portraitScaledToLongEdge() {
+            RenderResult result = renderer.render(
+                    new ComposeSpec(600, 1800, new BackgroundAttributes.Color("#FF0000"),
+                            List.of(), List.of(), List.of()),
+                    List.of(), Map.of());
+
+            BufferedImage thumb = decode(result.thumbnailJpeg());
+            assertThat(thumb.getHeight()).isEqualTo(512);
+            assertThat(thumb.getWidth()).isEqualTo(171);   // 600 × (512/1800) 반올림
+        }
+
+        @Test
+        @DisplayName("가로형(1200x400)은 512x171이다 — 절반 축소를 한 번 거치는 경로")
+        void landscapeScaledThroughHalving() {
+            RenderResult result = renderer.render(
+                    new ComposeSpec(1200, 400, new BackgroundAttributes.Color("#FF0000"),
+                            List.of(), List.of(), List.of()),
+                    List.of(), Map.of());
+
+            BufferedImage thumb = decode(result.thumbnailJpeg());
+            assertThat(thumb.getWidth()).isEqualTo(512);
+            assertThat(thumb.getHeight()).isEqualTo(171);
+        }
+
+        @Test
+        @DisplayName("원본이 512보다 작으면 확대하지 않는다 — 100x100 그대로")
+        void neverUpscaled() {
+            RenderResult result = renderer.render(
+                    spec(whiteBackground(), List.of(), List.of(), List.of()),
+                    List.of(), Map.of());
+
+            BufferedImage thumb = decode(result.thumbnailJpeg());
+            assertThat(thumb.getWidth()).isEqualTo(100);
+            assertThat(thumb.getHeight()).isEqualTo(100);
+        }
+
+        @Test
+        @DisplayName("썸네일은 JPEG이다 — 매직 바이트 FF D8")
+        void thumbnailIsJpeg() {
+            RenderResult result = renderer.render(
+                    spec(whiteBackground(), List.of(), List.of(), List.of()),
+                    List.of(), Map.of());
+
+            assertThat(result.thumbnailJpeg()[0]).isEqualTo((byte) 0xFF);
+            assertThat(result.thumbnailJpeg()[1]).isEqualTo((byte) 0xD8);
+        }
+
+        @Test
+        @DisplayName("축소 후에도 내용이 같은 상대 위치에 있다 (JPEG 손실 감안 ±8)")
+        void contentSurvivesScaling() {
+            // 1024 캔버스 왼쪽 절반이 파랑 슬롯 → 512 썸네일에서도 왼쪽 절반이 파랑
+            ComposeSpec spec = new ComposeSpec(1024, 1024, whiteBackground(),
+                    List.of(new Slot(0, 0, 512, 1024)), List.of(), List.of());
+
+            RenderResult result = renderer.render(spec, List.of(solidPng(10, 10, BLUE)), Map.of());
+
+            BufferedImage thumb = decode(result.thumbnailJpeg());
+            assertThat(thumb.getWidth()).isEqualTo(512);
+            assertCloseTo(pixel(thumb, 128, 256), BLUE, 8);
+            assertCloseTo(pixel(thumb, 384, 256), WHITE, 8);
+        }
+    }
+
+    @Nested
     @DisplayName("입력 검증 — 조용히 엉킨 그림 대신 예외")
     class InputValidation {
 
@@ -285,12 +354,17 @@ class FourcutRendererTest {
         }
     }
 
-    private static BufferedImage decode(byte[] png) {
+    private static BufferedImage decode(byte[] bytes) {
         try {
-            return ImageIO.read(new ByteArrayInputStream(png));
+            return ImageIO.read(new ByteArrayInputStream(bytes));
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+    }
+
+    // 기존 픽셀 테스트는 전부 원본을 본다 — 썸네일 검증은 Thumbnail 클래스가 따로 한다
+    private static BufferedImage decode(RenderResult result) {
+        return decode(result.fullPng());
     }
 
     private static Color pixel(BufferedImage image, int x, int y) {
