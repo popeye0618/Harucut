@@ -115,7 +115,9 @@ public class PaymentService {
                     .map(this::toResponse)
                     .orElseThrow(() -> new BusinessException(SubscriptionErrorCode.NO_ACTIVE_SUBSCRIPTION));
             case FAILED -> throw new BusinessException(PaymentErrorCode.PAYMENT_FAILED);
-            case CREATED -> throw new BusinessException(PaymentErrorCode.DUPLICATE_PAYMENT);
+            // IN_PROGRESS는 갱신 배치 전용 도장이라 INITIAL 주문에선 안 나오지만,
+            // switch는 enum 전체를 다뤄야 한다 — 의미는 CREATED와 같은 "결과 미확정"
+            case CREATED, IN_PROGRESS -> throw new BusinessException(PaymentErrorCode.DUPLICATE_PAYMENT);
         };
     }
 

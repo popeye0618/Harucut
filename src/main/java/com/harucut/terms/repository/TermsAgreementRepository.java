@@ -2,6 +2,7 @@ package com.harucut.terms.repository;
 
 import com.harucut.terms.entity.TermsAgreement;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -20,4 +21,8 @@ public interface TermsAgreementRepository extends JpaRepository<TermsAgreement, 
 
     // 동의/철회: 이 행이 있으면 update, 없으면 insert
     Optional<TermsAgreement> findByUserIdAndTermsId(Long userId, Long termsId);
+
+    @Modifying(clearAutomatically = true)
+    @Query("DELETE FROM TermsAgreement a WHERE a.userId = :userId")
+    void deleteByUserId(@Param("userId") Long userId);
 }

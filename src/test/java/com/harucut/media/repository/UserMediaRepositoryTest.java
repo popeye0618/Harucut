@@ -186,6 +186,42 @@ class UserMediaRepositoryTest {
         }
     }
 
+    @Nested
+    @DisplayName("탈퇴 삭제 쿼리")
+    class DeletionQueries {
+
+        @Test
+        @DisplayName("키 조회는 내 것만 나오고 썸네일 없는 행은 썸네일 목록에서 빠진다")
+        void keyProjections() {
+            User mine = persistUser("mine@harucut.com");
+            User other = persistUser("other@harucut.com");
+            em.persist(UserMedia.of(mine, "uploads/m1.png", "uploads/m1-thumb.jpg", "a.png"));
+            persistMedia(mine, "uploads/m2.png");
+            persistMedia(other, "uploads/o1.png");
+            em.flush();
+
+            assertThat(userMediaRepository.findS3KeysByUserId(mine.getId()))
+                    .containsExactlyInAnyOrder("uploads/m1.png", "uploads/m2.png");
+            assertThat(userMediaRepository.findThumbnailKeysByUserId(mine.getId()))
+                    .containsExactly("uploads/m1-thumb.jpg");
+        }
+
+        @Test
+        @DisplayName("벌크 삭제는 내 행만 지운다")
+        void bulkDeleteMineOnly() {
+            User mine = persistUser("mine@harucut.com");
+            User other = persistUser("other@harucut.com");
+            persistMedia(mine, "uploads/m1.png");
+            persistMedia(other, "uploads/o1.png");
+            em.flush();
+
+            userMediaRepository.deleteByUserId(mine.getId());
+
+            assertThat(userMediaRepository.findAll()).singleElement()
+                    .satisfies(media -> assertThat(media.getS3Key()).isEqualTo("uploads/o1.png"));
+        }
+    }
+
     // ── helpers ──────────────────────────────
 
     private User persistUser(String email) {

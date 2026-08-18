@@ -205,6 +205,22 @@ class CouponServiceTest {
 
             then(userCouponRepository).should(never()).saveAndFlush(any(UserCoupon.class));
         }
+
+        @Test
+        @DisplayName("무기한 유료 구독은 COUPON-008이고 이력을 저장하지 않는다")
+        void unlimitedPaidSubscriptionRejected() {
+            givenUser();
+            givenCoupon(coupon());
+            givenGatePasses();
+            given(userSubscriptionRepository.findByUserId(USER_ID))
+                    .willReturn(Optional.of(paidSubscription(null)));
+
+            assertThatThrownBy(() -> service.redeem(PUBLIC_ID, "WELCOME-PRO"))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting("errorCode").isEqualTo(CouponErrorCode.UNLIMITED_SUBSCRIPTION);
+
+            then(userCouponRepository).should(never()).saveAndFlush(any(UserCoupon.class));
+        }
     }
 
     @Nested
@@ -363,17 +379,6 @@ class CouponServiceTest {
             assertThat(subscription.getPlanTier()).isEqualTo(PlanTier.PLUS);
             assertThat(subscription.getSubscriptionStatus()).isEqualTo(SubscriptionStatus.ACTIVE);
             assertThat(subscription.getCurrentPeriodEnd()).isEqualTo(periodEnd);
-        }
-
-        @Test
-        @DisplayName("주기 종료가 없는 무기한 유료면 시작 시각은 now로 응답한다")
-        void unlimitedPaidFallsBackToNow() {
-            givenHappyPathForPaid(null);
-
-            RedeemResponse response = service.redeem(PUBLIC_ID, "WELCOME-PRO");
-
-            assertThat(response.applied()).isFalse();
-            assertThat(response.startsAt()).isEqualTo(NOW);
         }
 
         private UserSubscription givenHappyPathForPaid(LocalDateTime periodEnd) {

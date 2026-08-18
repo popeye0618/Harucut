@@ -6,7 +6,8 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 @ConfigurationProperties(prefix = "payment")
 public record PaymentProperties(
         @DefaultValue Gateway gateway,
-        @DefaultValue Mock mock
+        @DefaultValue Mock mock,
+        @DefaultValue("3") int graceDays
 ) {
 
     public record Gateway(

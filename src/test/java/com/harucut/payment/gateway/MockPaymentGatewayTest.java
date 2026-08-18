@@ -137,7 +137,8 @@ class MockPaymentGatewayTest {
     private static MockPaymentGateway gateway(boolean failCharge) {
         PaymentProperties properties = new PaymentProperties(
                 new PaymentProperties.Gateway("mock"),
-                new PaymentProperties.Mock(failCharge)
+                new PaymentProperties.Mock(failCharge),
+                3
         );
         Clock clock = Clock.fixed(FIXED_NOW.atZone(ZONE).toInstant(), ZONE);
         return new MockPaymentGateway(properties, clock);
