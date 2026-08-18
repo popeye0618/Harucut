@@ -70,6 +70,10 @@ public class CouponService {
         if (subscription.effectiveTier(now) == PlanTier.BASIC) {
             return redeemImmediately(coupon, subscription, userId, now);
         }
+
+        if (subscription.getCurrentPeriodEnd() == null) {
+            throw new BusinessException(CouponErrorCode.UNLIMITED_SUBSCRIPTION);
+        }
         return reserve(coupon, subscription, userId, now);
     }
 
@@ -95,8 +99,7 @@ public class CouponService {
         UserCoupon userCoupon = saveUserCoupon(UserCoupon.reserved(coupon, userId, now));
         subscription.reserveGrant(userCoupon.getId());
 
-        LocalDateTime start = subscription.getCurrentPeriodEnd() != null
-                ? subscription.getCurrentPeriodEnd() : now;
+        LocalDateTime start = subscription.getCurrentPeriodEnd();
         return new RedeemResponse(false, coupon.getGrantTier(), start, start.plusMonths(1));
     }
 
