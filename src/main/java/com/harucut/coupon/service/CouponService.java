@@ -2,6 +2,7 @@ package com.harucut.coupon.service;
 
 import com.harucut.common.exception.BusinessException;
 import com.harucut.common.exception.GlobalErrorCode;
+import com.harucut.coupon.dto.MyCouponResponse;
 import com.harucut.coupon.dto.RedeemResponse;
 import com.harucut.coupon.entity.Coupon;
 import com.harucut.coupon.entity.UserCoupon;
@@ -20,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -69,6 +71,16 @@ public class CouponService {
             return redeemImmediately(coupon, subscription, userId, now);
         }
         return reserve(coupon, subscription, userId, now);
+    }
+
+    @Transactional(readOnly = true)
+    public List<MyCouponResponse> getMyCoupons(String publicId) {
+        User user = userRepository.findByPublicId(publicId)
+                .orElseThrow(() -> new BusinessException(GlobalErrorCode.NOT_FOUND, "User not found."));
+
+        return userCouponRepository.findAllWithCouponByUserId(user.getId()).stream()
+                .map(MyCouponResponse::from)
+                .toList();
     }
 
     private RedeemResponse redeemImmediately(Coupon coupon, UserSubscription subscription, Long userId, LocalDateTime now) {

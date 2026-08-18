@@ -5,6 +5,8 @@ import com.harucut.coupon.entity.Coupon;
 import com.harucut.coupon.entity.UserCoupon;
 import com.harucut.subscription.enums.PlanTier;
 import com.harucut.support.FixedClockConfig;
+import jakarta.persistence.EntityManager;
+import org.hibernate.Hibernate;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,6 +17,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -34,6 +37,9 @@ class UserCouponRepositoryTest {
 
     @Autowired
     private CouponRepository couponRepository;
+
+    @Autowired
+    private EntityManager entityManager;
 
     /*
      * 중복 사용의 최후 방어선.
@@ -81,6 +87,38 @@ class UserCouponRepositoryTest {
 
         assertThat(userCouponRepository.existsByUserIdAndCouponId(1L, coupon.getId())).isTrue();
         assertThat(userCouponRepository.existsByUserIdAndCouponId(2L, coupon.getId())).isFalse();
+    }
+
+    @Test
+    @DisplayName("내 이력만 최신순으로 나온다")
+    void historyIsMineNewestFirst() {
+        Coupon first = couponRepository.saveAndFlush(coupon("CODE-1"));
+        Coupon second = couponRepository.saveAndFlush(coupon("CODE-2"));
+        userCouponRepository.save(UserCoupon.redeemed(first, 1L, NOW));
+        userCouponRepository.save(UserCoupon.reserved(second, 1L, NOW.plusMinutes(1)));
+        userCouponRepository.save(UserCoupon.redeemed(first, 99L, NOW));
+        userCouponRepository.flush();
+
+        List<UserCoupon> result = userCouponRepository.findAllWithCouponByUserId(1L);
+
+        assertThat(result).extracting(userCoupon -> userCoupon.getCoupon().getCode())
+                .containsExactly("CODE-2", "CODE-1");
+    }
+
+    /*
+     * fetch join 증명. 컨텍스트를 비우지 않으면 쿠폰이 이미 메모리에 있어서
+     * fetch join 없이도 통과해버린다 — clear가 이 테스트의 핵심이다.
+     */
+    @Test
+    @DisplayName("조회 직후 쿠폰이 프록시가 아니라 진짜로 로딩되어 있다 — fetch join 증명")
+    void fetchJoinInitializesCoupon() {
+        Coupon coupon = couponRepository.saveAndFlush(coupon("CODE-1"));
+        userCouponRepository.saveAndFlush(UserCoupon.redeemed(coupon, 1L, NOW));
+        entityManager.clear();
+
+        List<UserCoupon> result = userCouponRepository.findAllWithCouponByUserId(1L);
+
+        assertThat(Hibernate.isInitialized(result.get(0).getCoupon())).isTrue();
     }
 
     private Coupon coupon(String code) {

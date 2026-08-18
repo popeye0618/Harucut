@@ -2,6 +2,7 @@ package com.harucut.coupon.service;
 
 import com.harucut.common.exception.BusinessException;
 import com.harucut.common.exception.GlobalErrorCode;
+import com.harucut.coupon.dto.MyCouponResponse;
 import com.harucut.coupon.dto.RedeemResponse;
 import com.harucut.coupon.entity.Coupon;
 import com.harucut.coupon.entity.UserCoupon;
@@ -30,10 +31,11 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.List;
 import java.util.Optional;
 
-import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
-import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
@@ -382,6 +384,50 @@ class CouponServiceTest {
             given(userSubscriptionRepository.findByUserId(USER_ID)).willReturn(Optional.of(subscription));
             givenSaveReturnsWithId();
             return subscription;
+        }
+    }
+
+    @Nested
+    @DisplayName("내 쿠폰 목록")
+    class MyCoupons {
+
+        @Test
+        @DisplayName("없는 사용자는 404다")
+        void unknownUser() {
+            given(userRepository.findByPublicId(PUBLIC_ID)).willReturn(Optional.empty());
+
+            assertThatThrownBy(() -> service.getMyCoupons(PUBLIC_ID))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting("errorCode").isEqualTo(GlobalErrorCode.NOT_FOUND);
+        }
+
+        // publicId는 쿠폰이 아니라 사용 이력의 것이다 — 명세가 강조하는 부분
+        @Test
+        @DisplayName("이력이 응답으로 매핑되고 publicId는 이력의 것이다")
+        void mapsHistoryToResponse() {
+            givenUser();
+            UserCoupon userCoupon = UserCoupon.redeemed(coupon(), USER_ID, NOW);
+            given(userCouponRepository.findAllWithCouponByUserId(USER_ID))
+                    .willReturn(List.of(userCoupon));
+
+            List<MyCouponResponse> result = service.getMyCoupons(PUBLIC_ID);
+
+            assertThat(result).singleElement().satisfies(response -> {
+                assertThat(response.publicId()).isEqualTo(userCoupon.getPublicId());
+                assertThat(response.couponName()).isEqualTo("가입 축하 PRO");
+                assertThat(response.grantTier()).isEqualTo(PlanTier.PRO);
+                assertThat(response.status()).isEqualTo(UserCouponStatus.REDEEMED);
+                assertThat(response.redeemedAt()).isEqualTo(NOW);
+            });
+        }
+
+        @Test
+        @DisplayName("이력이 없으면 빈 목록이다")
+        void emptyHistory() {
+            givenUser();
+            given(userCouponRepository.findAllWithCouponByUserId(USER_ID)).willReturn(List.of());
+
+            assertThat(service.getMyCoupons(PUBLIC_ID)).isEmpty();
         }
     }
 
