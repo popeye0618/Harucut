@@ -1,0 +1,91 @@
+package com.harucut.config;
+
+import org.springframework.http.server.PathContainer;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.OrRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
+import org.springframework.web.util.pattern.PathPattern;
+import org.springframework.web.util.pattern.PathPatternParser;
+
+import java.util.Arrays;
+import java.util.List;
+
+/**
+ * 보안 필터 체인의 경로 규칙. <b>인가 규칙과 OpenAPI 문서가 같은 목록을 읽게</b> 하려고 밖으로 뺐다.
+ *
+ * <p>코틀린 구현은 컨트롤러마다 {@code @SecurityRequirement} 를 손으로 붙였고, 그 방식은 경로를
+ * 열거나 잠글 때 문서 쪽을 같이 안 고치면 조용히 어긋난다. 여기서는 문서가 이 클래스에서 파생된다.
+ *
+ * <p>{@code contains} 계열은 실제 요청 경로가 아니라 OpenAPI 문서의 <b>경로 템플릿</b>
+ * ({@code /api/notices/{publicId}})을 받는다. {@code {publicId}} 는 그냥 한 세그먼트로 취급되므로
+ * {@code /api/notices/**} 패턴에 그대로 걸린다.
+ */
+public final class SecurityPaths {
+
+    /** 인증 없이 열어두는 경로 ({@code permitAll}). */
+    public static final String[] PUBLIC = {
+            "/api/harucut/register",
+            "/api/harucut/login",
+            "/api/harucut/reissue",
+            "/api/harucut/logout",
+            "/api/harucut/reset/password/code",
+            "/api/harucut/reset/password",
+            "/api/harucut/reset/password/verification",
+            "/api/email-auth/**",
+            "/api/notices/**",
+            "/oauth2/**",
+            "/login/oauth2/**",
+            "/api/oauth2/unlink/naver",
+            "/api/terms",
+            "/api/payments/webhook",
+            "/swagger-ui/**",
+            "/swagger-ui.html",
+            "/v3/api-docs/**",
+            "/error"
+    };
+
+    /**
+     * 로그인만 되어 있으면 되는 경로 ({@code authenticated}). 나머지 경로는 전부
+     * {@code hasAnyRole("USER","ADMIN")} 이라 탈퇴 요청·정지 상태에서 403 이 난다.
+     *
+     * <p>여기 있는 경로는 <b>역할을 보지 않으므로 그 403 이 나지 않는다.</b>
+     * 탈퇴 요청 상태의 사용자가 자기 상태를 읽고 복구까지 갈 수 있어야 하기 때문이다.
+     * 단, 메서드에 {@code @PreAuthorize} 가 따로 붙어 있으면 그쪽에서 403 이 날 수 있다
+     * (복구 API 가 그렇다).
+     */
+    public static final String[] AUTHENTICATED_ONLY = {
+            "/api/auth/status",
+            "/api/harucut/reactivate"
+    };
+
+    private static final List<PathPattern> PARSED_PUBLIC = parse(PUBLIC);
+    private static final List<PathPattern> PARSED_AUTHENTICATED_ONLY = parse(AUTHENTICATED_ONLY);
+
+    private SecurityPaths() {
+    }
+
+    /** Security 필터 체인이 쓰는 공개 경로 매처. */
+    public static RequestMatcher publicMatcher() {
+        return new OrRequestMatcher(
+                Arrays.stream(PUBLIC)
+                        .map(PathPatternRequestMatcher::pathPattern)
+                        .toArray(RequestMatcher[]::new));
+    }
+
+    public static boolean isPublic(String pathTemplate) {
+        return matches(PARSED_PUBLIC, pathTemplate);
+    }
+
+    public static boolean isAuthenticatedOnly(String pathTemplate) {
+        return matches(PARSED_AUTHENTICATED_ONLY, pathTemplate);
+    }
+
+    private static List<PathPattern> parse(String[] patterns) {
+        return Arrays.stream(patterns).map(PathPatternParser.defaultInstance::parse).toList();
+    }
+
+    private static boolean matches(List<PathPattern> patterns, String pathTemplate) {
+        PathContainer container = PathContainer.parsePath(pathTemplate);
+        return patterns.stream().anyMatch(pattern -> pattern.matches(container));
+    }
+}
