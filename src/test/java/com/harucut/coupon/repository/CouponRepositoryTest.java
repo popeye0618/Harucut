@@ -90,6 +90,18 @@ class CouponRepositoryTest {
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
+    @Test
+    @DisplayName("전체 목록은 최신 생성이 먼저다")
+    void adminListNewestFirst() {
+        couponRepository.save(coupon("CODE-1", null));
+        couponRepository.save(coupon("CODE-2", null));
+        couponRepository.flush();
+
+        assertThat(couponRepository.findAllByOrderByIdDesc())
+                .extracting(Coupon::getCode)
+                .containsExactly("CODE-2", "CODE-1");
+    }
+
     private Coupon coupon(String code, Integer maxRedemptions) {
         return Coupon.create("가입 축하 PRO", code, PlanTier.PRO, maxRedemptions, null);
     }
