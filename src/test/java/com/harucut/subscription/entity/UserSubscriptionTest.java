@@ -191,4 +191,30 @@ class UserSubscriptionTest {
             assertThat(subscription.isAutoRenew()).isFalse();
         }
     }
+
+    @Nested
+    @DisplayName("grant 예약")
+    class GrantReservation {
+
+        @Test
+        @DisplayName("reserveGrant는 예약된 UserCoupon의 PK를 기억한다")
+        void reserveGrant() {
+            UserSubscription subscription = UserSubscription.createBasic(USER_ID);
+
+            subscription.reserveGrant(10L);
+
+            assertThat(subscription.getReservedUserCouponId()).isEqualTo(10L);
+        }
+
+        @Test
+        @DisplayName("clearReservedGrant는 예약을 비운다")
+        void clearReservedGrant() {
+            UserSubscription subscription = UserSubscription.createBasic(USER_ID);
+            subscription.reserveGrant(10L);
+
+            subscription.clearReservedGrant();
+
+            assertThat(subscription.getReservedUserCouponId()).isNull();
+        }
+    }
 }

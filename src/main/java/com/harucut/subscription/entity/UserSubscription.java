@@ -47,6 +47,9 @@ public class UserSubscription extends BaseEntity {
     @Version
     private Long version;
 
+    @Column(name = "reserved_user_coupon_id")
+    private Long reservedUserCouponId;
+
     private UserSubscription(Long userId, PlanTier planTier, SubscriptionStatus subscriptionStatus,
                              LocalDateTime currentPeriodStart, LocalDateTime currentPeriodEnd, boolean autoRenew) {
         this.userId = userId;
@@ -123,5 +126,13 @@ public class UserSubscription extends BaseEntity {
         }
         // 경계 포함: now == currentPeriodEnd 도 만료로 본다
         return now.isBefore(currentPeriodEnd) ? planTier : PlanTier.BASIC;
+    }
+
+    public void reserveGrant(Long userCouponId) {
+        this.reservedUserCouponId = userCouponId;
+    }
+
+    public void clearReservedGrant() {
+        this.reservedUserCouponId = null;
     }
 }
