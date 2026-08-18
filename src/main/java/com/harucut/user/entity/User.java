@@ -97,4 +97,14 @@ public class User extends BaseEntity {
     public void changeProfileImageUrl(String profileImageUrl) {
         this.profileImageUrl = profileImageUrl;
     }
+
+    public void deleteRequested(LocalDateTime now) {
+        this.userStatus = UserStatus.DELETED_REQUESTED;
+        this.deleteRequestedAt = now;
+    }
+
+    public void reActivate() {
+        this.userStatus = UserStatus.ACTIVE;
+        this.deleteRequestedAt = null;
+    }
 }

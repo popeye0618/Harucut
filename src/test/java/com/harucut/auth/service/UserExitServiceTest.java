@@ -1,0 +1,139 @@
+package com.harucut.auth.service;
+
+import com.harucut.auth.exception.AuthErrorCode;
+import com.harucut.common.exception.BusinessException;
+import com.harucut.support.UserFixtures;
+import com.harucut.user.entity.User;
+import com.harucut.user.enums.UserStatus;
+import com.harucut.user.repository.UserRepository;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.time.Clock;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
+
+@ExtendWith(MockitoExtension.class)
+@DisplayName("UserExitService")
+class UserExitServiceTest {
+
+    private static final String PUBLIC_ID = "user-pub-001";
+    private static final LocalDateTime NOW = LocalDateTime.of(2026, 8, 18, 10, 0);
+    private static final ZoneId ZONE = ZoneId.of("Asia/Seoul");
+
+    @Mock
+    private UserRepository userRepository;
+
+    @Mock
+    private RefreshTokenService refreshTokenService;
+
+    private UserExitService service;
+
+    @BeforeEach
+    void setUp() {
+        Clock clock = Clock.fixed(NOW.atZone(ZONE).toInstant(), ZONE);
+        service = new UserExitService(userRepository, refreshTokenService, clock);
+    }
+
+    @Nested
+    @DisplayName("탈퇴 요청")
+    class RequestExit {
+
+        @Test
+        @DisplayName("상태가 DELETED_REQUESTED가 되고 요청 시각이 기록된다")
+        void marksDeleteRequested() {
+            User user = givenActiveUser();
+
+            service.requestExit(PUBLIC_ID);
+
+            assertThat(user.getUserStatus()).isEqualTo(UserStatus.DELETED_REQUESTED);
+            assertThat(user.getDeleteRequestedAt()).isEqualTo(NOW);
+        }
+
+        @Test
+        @DisplayName("refresh 토큰이 삭제된다")
+        void revokesRefreshToken() {
+            givenActiveUser();
+
+            service.requestExit(PUBLIC_ID);
+
+            then(refreshTokenService).should().revoke(PUBLIC_ID);
+        }
+
+        @Test
+        @DisplayName("없는 사용자는 AUTH-020이고 토큰을 건드리지 않는다")
+        void unknownUser() {
+            given(userRepository.findByPublicId(PUBLIC_ID)).willReturn(Optional.empty());
+
+            assertThatThrownBy(() -> service.requestExit(PUBLIC_ID))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting("errorCode").isEqualTo(AuthErrorCode.USER_NOT_FOUND);
+
+            then(refreshTokenService).shouldHaveNoInteractions();
+        }
+    }
+
+    @Nested
+    @DisplayName("복구")
+    class ReActivate {
+
+        @Test
+        @DisplayName("DELETED_REQUESTED면 ACTIVE로 돌아오고 요청 시각이 비워진다")
+        void restoresToActive() {
+            User user = givenDeleteRequestedUser();
+
+            service.reActivate(PUBLIC_ID);
+
+            assertThat(user.getUserStatus()).isEqualTo(UserStatus.ACTIVE);
+            assertThat(user.getDeleteRequestedAt()).isNull();
+        }
+
+        @Test
+        @DisplayName("복구 시에도 refresh 토큰을 지워 재로그인을 강제한다")
+        void revokesRefreshToken() {
+            givenDeleteRequestedUser();
+
+            service.reActivate(PUBLIC_ID);
+
+            then(refreshTokenService).should().revoke(PUBLIC_ID);
+        }
+
+        @Test
+        @DisplayName("DELETED_REQUESTED가 아니면 AUTH-007이고 상태가 그대로다")
+        void notDeletionTarget() {
+            User user = givenActiveUser();
+
+            assertThatThrownBy(() -> service.reActivate(PUBLIC_ID))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting("errorCode").isEqualTo(AuthErrorCode.NOT_DELETION_TARGET);
+
+            assertThat(user.getUserStatus()).isEqualTo(UserStatus.ACTIVE);
+            then(refreshTokenService).shouldHaveNoInteractions();
+        }
+    }
+
+    private User givenActiveUser() {
+        User user = UserFixtures.localUser("exit@harucut.com", "encoded");
+        given(userRepository.findByPublicId(PUBLIC_ID)).willReturn(Optional.of(user));
+        return user;
+    }
+
+    // 실제 전이 메서드로 상태를 만든다 — 픽스처로 상태만 심으면 deleteRequestedAt이 비어 있어 검증이 약해진다
+    private User givenDeleteRequestedUser() {
+        User user = UserFixtures.localUser("exit@harucut.com", "encoded");
+        user.deleteRequested(NOW.minusDays(1));
+        given(userRepository.findByPublicId(PUBLIC_ID)).willReturn(Optional.of(user));
+        return user;
+    }
+}

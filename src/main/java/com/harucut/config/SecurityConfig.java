@@ -102,6 +102,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(PUBLIC_PATHS).permitAll()
                         .requestMatchers("/api/auth/status").authenticated()
+                        .requestMatchers("/api/harucut/reactivate").authenticated()
                         .anyRequest().hasAnyRole("USER", "ADMIN")
                 );
 
