@@ -3,6 +3,7 @@ package com.harucut.auth.oauth2;
 import com.harucut.auth.security.AuthenticatedUser;
 import com.harucut.user.entity.User;
 import com.harucut.user.enums.Provider;
+import com.harucut.user.event.UserRegisterEvent;
 import com.harucut.user.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -12,6 +13,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 
@@ -32,11 +34,14 @@ class SocialLoginServiceTest {
     @Mock
     private UserRepository userRepository;
 
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
+
     private SocialLoginService service;
 
     @BeforeEach
     void setUp() {
-        service = new SocialLoginService(userRepository);
+        service = new SocialLoginService(userRepository, eventPublisher);
     }
 
     @Nested
@@ -64,6 +69,17 @@ class SocialLoginServiceTest {
             service.resolve("kakao", kakaoAttributes());
 
             then(userRepository).should(never()).save(any(User.class));
+        }
+
+        @Test
+        @DisplayName("가입 이벤트를 발행하지 않는다")
+        void doesNotPublishEvent() {
+            given(userRepository.findByProviderAndProviderId(Provider.KAKAO, "kakao-sub-1"))
+                    .willReturn(Optional.of(kakaoUser()));
+
+            service.resolve("kakao", kakaoAttributes());
+
+            then(eventPublisher).shouldHaveNoInteractions();
         }
     }
 
@@ -106,6 +122,21 @@ class SocialLoginServiceTest {
 
             assertThat(savedUser().getProviderId()).isEqualTo("naver-id-1");
         }
+
+        /*
+         * 이 이벤트가 BASIC 구독 생성으로 이어진다(SubscriptionProvisioningListener).
+         * 발행이 빠지면 소셜 유저만 구독 행이 없는 상태로 돌아간다.
+         */
+        @Test
+        @DisplayName("가입하면 UserRegisterEvent를 발행한다")
+        void publishesRegisterEvent() {
+            givenNoKakaoUser();
+            givenSaveReturnsArgument();
+
+            service.resolve("kakao", kakaoAttributes());
+
+            then(eventPublisher).should().publishEvent(any(UserRegisterEvent.class));
+        }
     }
 
     @Nested
@@ -146,6 +177,19 @@ class SocialLoginServiceTest {
                     .isInstanceOf(OAuth2AuthenticationException.class)
                     .extracting(e -> ((OAuth2AuthenticationException) e).getError().getErrorCode())
                     .isEqualTo("concurrent_registration");
+        }
+
+        @Test
+        @DisplayName("저장이 실패하면 가입 이벤트를 발행하지 않는다")
+        void doesNotPublishEventOnFailure() {
+            givenNoKakaoUser();
+            given(userRepository.save(any(User.class)))
+                    .willThrow(new DataIntegrityViolationException("uk_users_provider_provider_id"));
+
+            assertThatThrownBy(() -> service.resolve("kakao", kakaoAttributes()))
+                    .isInstanceOf(OAuth2AuthenticationException.class);
+
+            then(eventPublisher).shouldHaveNoInteractions();
         }
     }
 
