@@ -163,6 +163,41 @@ class ComposeJobRepositoryTest {
         }
     }
 
+    @Nested
+    @DisplayName("탈퇴 삭제 쿼리")
+    class DeletionQueries {
+
+        @Test
+        @DisplayName("결과 키 조회는 내 완료 작업 것만 나온다 — 미완료(null)는 빠진다")
+        void resultKeyProjection() {
+            User mine = persistUser("mine@harucut.com");
+            User other = persistUser("other@harucut.com");
+            ComposeJob done = em.persist(ComposeJob.create(mine, 7L, "idem-1", FOUR_KEYS, spec()));
+            done.complete("uploads/results/r1.png", 11L);
+            em.persist(ComposeJob.create(mine, 7L, "idem-2", FOUR_KEYS, spec()));
+            ComposeJob othersDone = em.persist(ComposeJob.create(other, 7L, "idem-1", FOUR_KEYS, spec()));
+            othersDone.complete("uploads/results/r2.png", 12L);
+            em.flush();
+
+            assertThat(composeJobRepository.findResultKeysByUserId(mine.getId()))
+                    .containsExactly("uploads/results/r1.png");
+        }
+
+        @Test
+        @DisplayName("벌크 삭제는 내 작업만 지운다")
+        void bulkDeleteMineOnly() {
+            User mine = persistUser("mine@harucut.com");
+            User other = persistUser("other@harucut.com");
+            em.persist(ComposeJob.create(mine, 7L, "idem-1", FOUR_KEYS, spec()));
+            em.persist(ComposeJob.create(other, 7L, "idem-1", FOUR_KEYS, spec()));
+            em.flush();
+
+            composeJobRepository.deleteByUserId(mine.getId());
+
+            assertThat(composeJobRepository.findAll()).hasSize(1);
+        }
+    }
+
     // ── fixtures ──────────────────────────────
 
     private User persistUser(String email) {

@@ -3,6 +3,7 @@ package com.harucut.frame.repository;
 import com.harucut.frame.entity.Frame;
 import com.harucut.user.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -26,4 +27,15 @@ public interface FrameRepository extends JpaRepository<Frame, Long> {
 
     // FrameCountPort 어댑터용 — subscription의 사용량 API
     long countByUserId(Long userId);
+
+    @Query("select f from Frame f left join fetch f.components where f.user.id = :userId")
+    List<Frame> findAllWithComponentsByUserId(@Param("userId") Long userId);
+
+    @Modifying(clearAutomatically = true)
+    @Query("delete from FrameComponent c where c.frame.id in (select f.id from Frame f where f.user.id = :userId)")
+    void deleteComponentsByUserId(@Param("userId") Long userId);
+
+    @Modifying(clearAutomatically = true)
+    @Query("delete from Frame f where f.user.id = :userId")
+    void deleteByUserId(@Param("userId") Long userId);
 }
