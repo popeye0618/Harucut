@@ -1,9 +1,11 @@
 package com.harucut.auth.service;
 
 import com.harucut.auth.exception.AuthErrorCode;
+import com.harucut.auth.oauth2.unlink.OAuth2UnlinkService;
 import com.harucut.common.exception.BusinessException;
 import com.harucut.support.UserFixtures;
 import com.harucut.user.entity.User;
+import com.harucut.user.enums.Provider;
 import com.harucut.user.enums.UserStatus;
 import com.harucut.user.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,8 +30,12 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.willAnswer;
+import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("UserExitService")
@@ -52,6 +58,9 @@ class UserExitServiceTest {
     private UserDeletionHandler secondHandler;
 
     @Mock
+    private OAuth2UnlinkService unlinkService;
+
+    @Mock
     private ApplicationEventPublisher eventPublisher;
 
     private UserExitService service;
@@ -60,7 +69,7 @@ class UserExitServiceTest {
     void setUp() {
         Clock clock = Clock.fixed(NOW.atZone(ZONE).toInstant(), ZONE);
         service = new UserExitService(userRepository, refreshTokenService, clock,
-                List.of(firstHandler, secondHandler), eventPublisher);
+                List.of(firstHandler, secondHandler), List.of(unlinkService), eventPublisher);
     }
 
     @Nested
@@ -229,6 +238,59 @@ class UserExitServiceTest {
             service.exit(USER_ID);
 
             then(eventPublisher).shouldHaveNoInteractions();
+        }
+
+        @Test
+        @DisplayName("provider를 지원하는 unlink가 익명화 전에 호출된다")
+        void unlinksBeforeAnonymization() {
+            givenDeleteRequestedKakaoUser(USER_ID);
+            given(unlinkService.supports(Provider.KAKAO)).willReturn(true);
+            // delete()가 providerId를 지우기 전에 불려야 한다 — 호출 시점의 상태를 여기서 박제한다
+            willAnswer(invocation -> {
+                User target = invocation.getArgument(0);
+                assertThat(target.getProviderId()).isEqualTo("kakao-123");
+                assertThat(target.getUserStatus()).isEqualTo(UserStatus.DELETED_REQUESTED);
+                return null;
+            }).given(unlinkService).unlink(any(User.class));
+
+            service.exit(USER_ID);
+
+            then(unlinkService).should().unlink(any(User.class));
+        }
+
+        @Test
+        @DisplayName("provider를 지원하는 unlink가 없으면 그냥 지나간다")
+        void skipsUnlinkForUnsupportedProvider() {
+            givenDeleteRequestedUserById(USER_ID);
+
+            service.exit(USER_ID);
+
+            then(unlinkService).should(never()).unlink(any(User.class));
+        }
+
+        @Test
+        @DisplayName("unlink 실패는 전파되고 익명화·토큰 삭제가 일어나지 않는다")
+        void unlinkFailureAbortsExit() {
+            User user = givenDeleteRequestedKakaoUser(USER_ID);
+            given(unlinkService.supports(Provider.KAKAO)).willReturn(true);
+            willThrow(new BusinessException(AuthErrorCode.OAUTH2_UNLINK_FAILED))
+                    .given(unlinkService).unlink(any(User.class));
+
+            assertThatThrownBy(() -> service.exit(USER_ID))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting("errorCode").isEqualTo(AuthErrorCode.OAUTH2_UNLINK_FAILED);
+
+            // 배치에서는 이 예외로 청크가 롤백·스킵되고 다음 날 재시도된다
+            assertThat(user.getUserStatus()).isEqualTo(UserStatus.DELETED_REQUESTED);
+            then(refreshTokenService).shouldHaveNoInteractions();
+        }
+
+        private User givenDeleteRequestedKakaoUser(Long userId) {
+            User user = UserFixtures.socialUser("kakao-exit@harucut.com", Provider.KAKAO, "kakao-123");
+            ReflectionTestUtils.setField(user, "id", userId);
+            user.deleteRequested(NOW.minusDays(8));
+            given(userRepository.findById(userId)).willReturn(Optional.of(user));
+            return user;
         }
 
         private User givenDeleteRequestedUserById(Long userId) {

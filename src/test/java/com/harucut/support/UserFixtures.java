@@ -26,4 +26,10 @@ public final class UserFixtures {
         ReflectionTestUtils.setField(user, "provider", provider);
         return user;
     }
+
+    public static User socialUser(String email, Provider provider, String providerId) {
+        User user = socialUser(email, provider);
+        ReflectionTestUtils.setField(user, "providerId", providerId);
+        return user;
+    }
 }
