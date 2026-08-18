@@ -65,11 +65,19 @@ public class PaymentOrder extends BaseEntity {
         return new PaymentOrder(userId, planTier, amount, OrderType.INITIAL, idempotencyKey);
     }
 
+    public static PaymentOrder createRenewal(Long userId, PlanTier planTier, int amount, String idempotencyKey) {
+        return new PaymentOrder(userId, planTier, amount, OrderType.RENEWAL, idempotencyKey);
+    }
+
     public void markPaid() {
         this.status = OrderStatus.PAID;
     }
 
     public void markFailed() {
         this.status = OrderStatus.FAILED;
+    }
+
+    public void markCharging() {
+        this.status = OrderStatus.IN_PROGRESS;
     }
 }
