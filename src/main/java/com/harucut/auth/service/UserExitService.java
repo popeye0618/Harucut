@@ -1,6 +1,7 @@
 package com.harucut.auth.service;
 
 import com.harucut.auth.exception.AuthErrorCode;
+import com.harucut.auth.oauth2.unlink.OAuth2UnlinkService;
 import com.harucut.common.exception.BusinessException;
 import com.harucut.storage.event.S3DeleteEvent;
 import com.harucut.storage.util.S3Keys;
@@ -24,6 +25,7 @@ public class UserExitService {
     private final RefreshTokenService refreshTokenService;
     private final Clock clock;
     private final List<UserDeletionHandler> handlers;
+    private final List<OAuth2UnlinkService> unlinkServices;
     private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
@@ -62,7 +64,13 @@ public class UserExitService {
         User managedUser = userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(AuthErrorCode.USER_NOT_FOUND));
 
-        // TODO(Phase 13): provider별 소셜 연동 해제(unlink)가 여기 들어간다
+        // 익명화(delete)보다 먼저 — delete()가 providerId를 지우면 끊을 대상을 잃는다.
+        // 실패는 예외로 올라가 이 사용자만 롤백·스킵되고 다음 날 배치가 재시도한다.
+        unlinkServices.stream()
+                .filter(service -> service.supports(managedUser.getProvider()))
+                .findFirst()
+                .ifPresent(service -> service.unlink(managedUser));
+
         refreshTokenService.revoke(publicId);
         managedUser.delete();
 
