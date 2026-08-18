@@ -99,3 +99,4 @@ payment:
     provider: ${PAYMENT_GATEWAY_PROVIDER:mock}
   mock:
     fail-charge: false
+  grace-days: ${PAYMENT_GRACE_DAYS:3}
