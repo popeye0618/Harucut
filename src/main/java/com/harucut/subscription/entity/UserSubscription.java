@@ -70,8 +70,6 @@ public class UserSubscription extends BaseEntity {
     }
 
     // ── 상태 전이. 가드(해지 가능 여부 등)는 서비스 몫이고 여기는 무조건 전이만 한다 ──
-    // billingKey 연결/해제는 Phase 10에서 activatePaid/expireToFree에 합류한다
-
     public void activatePaid(PlanTier planTier, LocalDateTime start, LocalDateTime end) {
         this.planTier = planTier;
         this.subscriptionStatus = SubscriptionStatus.ACTIVE;

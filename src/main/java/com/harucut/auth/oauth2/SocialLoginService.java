@@ -3,9 +3,11 @@ package com.harucut.auth.oauth2;
 import com.harucut.auth.security.AuthenticatedUser;
 import com.harucut.user.entity.User;
 import com.harucut.user.enums.Provider;
+import com.harucut.user.event.UserRegisterEvent;
 import com.harucut.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.oauth2.client.registration.ClientRegistration;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
@@ -25,6 +27,7 @@ public class SocialLoginService {
     private static final String CONCURRENT_REGISTRATION = "concurrent_registration";
 
     private final UserRepository userRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public AuthenticatedUser resolve(String registrationId, Map<String, Object> attributes) {
@@ -49,7 +52,7 @@ public class SocialLoginService {
         User user = User.socialUser(providerUser.provider(), providerUser.providerId(), providerUser.email(), providerUser.username());
 
         try {
-            return userRepository.save(user);
+            user = userRepository.save(user);
         } catch (DataIntegrityViolationException e) {
             log.warn("[social-login] 가입 중 제약 위반. provider={}, providerId={}",
                     providerUser.provider(), providerUser.providerId(), e);
@@ -57,6 +60,10 @@ public class SocialLoginService {
                     new OAuth2Error(CONCURRENT_REGISTRATION), e.getMessage(), e
             );
         }
+
+        eventPublisher.publishEvent(new UserRegisterEvent(user.getId()));
+
+        return user;
     }
 
     private OAuth2AuthenticationException missing(ProviderUser providerUser, String reason) {

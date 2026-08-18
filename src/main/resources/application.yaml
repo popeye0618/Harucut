@@ -88,3 +88,9 @@ cloud:
     lambda:
       # compose.executor=lambda일 때만 필요 — 로컬(기본 in-process)은 비워둔다
       compose-function: ${COMPOSE_LAMBDA_FUNCTION:}
+
+payment:
+  gateway:
+    provider: ${PAYMENT_GATEWAY_PROVIDER:mock}
+  mock:
+    fail-charge: false
