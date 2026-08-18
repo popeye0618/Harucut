@@ -14,9 +14,16 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import org.mockito.ArgumentCaptor;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.test.util.ReflectionTestUtils;
+
+import com.harucut.storage.event.S3DeleteEvent;
+
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -38,12 +45,22 @@ class UserExitServiceTest {
     @Mock
     private RefreshTokenService refreshTokenService;
 
+    @Mock
+    private UserDeletionHandler firstHandler;
+
+    @Mock
+    private UserDeletionHandler secondHandler;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
+
     private UserExitService service;
 
     @BeforeEach
     void setUp() {
         Clock clock = Clock.fixed(NOW.atZone(ZONE).toInstant(), ZONE);
-        service = new UserExitService(userRepository, refreshTokenService, clock);
+        service = new UserExitService(userRepository, refreshTokenService, clock,
+                List.of(firstHandler, secondHandler), eventPublisher);
     }
 
     @Nested
@@ -120,6 +137,107 @@ class UserExitServiceTest {
 
             assertThat(user.getUserStatus()).isEqualTo(UserStatus.ACTIVE);
             then(refreshTokenService).shouldHaveNoInteractions();
+        }
+    }
+
+    @Nested
+    @DisplayName("하드 삭제 (배치가 부른다)")
+    class Exit {
+
+        private static final Long USER_ID = 7L;
+
+        @Test
+        @DisplayName("없는 사용자는 AUTH-020이고 핸들러가 돌지 않는다")
+        void unknownUser() {
+            given(userRepository.findById(USER_ID)).willReturn(Optional.empty());
+
+            assertThatThrownBy(() -> service.exit(USER_ID))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting("errorCode").isEqualTo(AuthErrorCode.USER_NOT_FOUND);
+
+            then(firstHandler).shouldHaveNoInteractions();
+        }
+
+        @Test
+        @DisplayName("DELETED_REQUESTED가 아니면 AUTH-007이고 핸들러가 돌지 않는다")
+        void notDeletionTarget() {
+            User user = UserFixtures.localUser("exit@harucut.com", "encoded");
+            ReflectionTestUtils.setField(user, "id", USER_ID);
+            given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
+
+            assertThatThrownBy(() -> service.exit(USER_ID))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting("errorCode").isEqualTo(AuthErrorCode.NOT_DELETION_TARGET);
+
+            then(firstHandler).shouldHaveNoInteractions();
+            then(secondHandler).shouldHaveNoInteractions();
+        }
+
+        @Test
+        @DisplayName("등록된 모든 핸들러가 userId로 호출된다")
+        void callsEveryHandler() {
+            givenDeleteRequestedUserById(USER_ID);
+
+            service.exit(USER_ID);
+
+            then(firstHandler).should().handleUserDeletion(USER_ID);
+            then(secondHandler).should().handleUserDeletion(USER_ID);
+        }
+
+        @Test
+        @DisplayName("행은 남고 개인정보만 익명화된다")
+        void anonymizesUser() {
+            User user = givenDeleteRequestedUserById(USER_ID);
+
+            service.exit(USER_ID);
+
+            assertThat(user.getUserStatus()).isEqualTo(UserStatus.DELETED);
+            assertThat(user.getEmail()).isEqualTo("deleted_7@harucut.local");
+            assertThat(user.getUsername()).isEqualTo("탈퇴한 사용자");
+            assertThat(user.getPassword()).isNull();
+            assertThat(user.getProviderId()).isNull();
+        }
+
+        @Test
+        @DisplayName("refresh 토큰이 삭제된다")
+        void revokesRefreshToken() {
+            User user = givenDeleteRequestedUserById(USER_ID);
+
+            service.exit(USER_ID);
+
+            then(refreshTokenService).should().revoke(user.getPublicId());
+        }
+
+        @Test
+        @DisplayName("프로필이 업로드된 이미지면 S3 삭제 이벤트가 나간다")
+        void publishesProfileImageDeletion() {
+            User user = givenDeleteRequestedUserById(USER_ID);
+            user.changeProfileImageUrl("uploads/users/abc/profile/me.png");
+
+            service.exit(USER_ID);
+
+            ArgumentCaptor<S3DeleteEvent> captor = ArgumentCaptor.forClass(S3DeleteEvent.class);
+            then(eventPublisher).should().publishEvent(captor.capture());
+            assertThat(captor.getValue().keys()).containsExactly("uploads/users/abc/profile/me.png");
+        }
+
+        @Test
+        @DisplayName("프로필이 기본 이미지면 S3 이벤트가 나가지 않는다")
+        void skipsDefaultProfileImage() {
+            givenDeleteRequestedUserById(USER_ID);
+
+            service.exit(USER_ID);
+
+            then(eventPublisher).shouldHaveNoInteractions();
+        }
+
+        private User givenDeleteRequestedUserById(Long userId) {
+            User user = UserFixtures.localUser("exit@harucut.com", "encoded");
+            ReflectionTestUtils.setField(user, "id", userId);
+            user.deleteRequested(NOW.minusDays(8));
+            // exit는 핸들러 전(검증)과 후(익명화)로 두 번 로드한다 — 목이라 같은 인스턴스가 두 번 나간다
+            given(userRepository.findById(userId)).willReturn(Optional.of(user));
+            return user;
         }
     }
 

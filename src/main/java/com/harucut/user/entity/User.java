@@ -26,6 +26,8 @@ import java.time.LocalDateTime;
 public class User extends BaseEntity {
 
     private static final String DEFAULT_PROFILE_IMAGE = "resources/defaults/userDefaultImage.png";
+    public static final int DELETION_GRACE_DAYS = 7;
+    private static final String DELETED_USERNAME = "탈퇴한 사용자";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -106,5 +108,14 @@ public class User extends BaseEntity {
     public void reActivate() {
         this.userStatus = UserStatus.ACTIVE;
         this.deleteRequestedAt = null;
+    }
+
+    public void delete() {
+        this.userStatus = UserStatus.DELETED;
+        this.email = "deleted_" + id + "@harucut.local";
+        this.username = DELETED_USERNAME;
+        this.password = null;
+        this.providerId = null;
+        this.profileImageUrl = DEFAULT_PROFILE_IMAGE;
     }
 }

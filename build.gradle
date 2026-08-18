@@ -33,6 +33,7 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-webmvc'
     implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+    implementation 'org.springframework.boot:spring-boot-starter-batch'
     implementation 'io.jsonwebtoken:jjwt-api:0.12.7'
     implementation platform('software.amazon.awssdk:bom:2.25.67')
     implementation 'software.amazon.awssdk:s3'
