@@ -65,7 +65,7 @@ class PaymentSubscribeFlowTest {
         User user = newBasicUser("pay-ok@harucut.com");
 
         SubscriptionResponse response =
-                paymentService.subscribe(user.getPublicId(), request("customer-1", "auth-1", "it-ok-1"));
+                paymentService.subscribe(user.getPublicId(), request("auth-1", "it-ok-1"));
 
         assertThat(response.planTier()).isEqualTo(PlanTier.PLUS);
         assertThat(response.autoRenew()).isTrue();
@@ -81,7 +81,7 @@ class PaymentSubscribeFlowTest {
     void successLeavesPaidRecords() {
         User user = newBasicUser("pay-rows@harucut.com");
 
-        paymentService.subscribe(user.getPublicId(), request("customer-1", "auth-1", "it-rows-1"));
+        paymentService.subscribe(user.getPublicId(), request("auth-1", "it-rows-1"));
 
         PaymentOrder order = paymentOrderRepository.findByIdempotencyKey("it-rows-1").orElseThrow();
         assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID);
@@ -102,7 +102,7 @@ class PaymentSubscribeFlowTest {
         User user = newBasicUser("pay-fail@harucut.com");
 
         assertThatThrownBy(() ->
-                paymentService.subscribe(user.getPublicId(), request("customer-FAIL", "auth-1", "it-fail-1")))
+                paymentService.subscribe(user.getPublicId(), request("auth-DECLINE", "it-fail-1")))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(PaymentErrorCode.PAYMENT_FAILED);
 
@@ -122,7 +122,7 @@ class PaymentSubscribeFlowTest {
         User user = newBasicUser("pay-noissue@harucut.com");
 
         assertThatThrownBy(() ->
-                paymentService.subscribe(user.getPublicId(), request("customer-1", "auth-FAIL", "it-noissue-1")))
+                paymentService.subscribe(user.getPublicId(), request("auth-FAIL", "it-noissue-1")))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(PaymentErrorCode.BILLING_KEY_ISSUE_FAILED);
 
@@ -133,7 +133,7 @@ class PaymentSubscribeFlowTest {
     @DisplayName("성공한 결제의 키를 재전송하면 재청구 없이 같은 형태의 응답을 받는다")
     void paidKeyReplaysWithoutNewCharge() {
         User user = newBasicUser("pay-replay@harucut.com");
-        SubscribeRequest request = request("customer-1", "auth-1", "it-replay-1");
+        SubscribeRequest request = request("auth-1", "it-replay-1");
         SubscriptionResponse first = paymentService.subscribe(user.getPublicId(), request);
         long orders = paymentOrderRepository.count();
         long payments = paymentRepository.count();
@@ -150,7 +150,7 @@ class PaymentSubscribeFlowTest {
     @DisplayName("실패한 결제의 키를 재전송하면 재청구 없이 같은 402를 받는다")
     void failedKeyReplays402WithoutNewCharge() {
         User user = newBasicUser("pay-refail@harucut.com");
-        SubscribeRequest request = request("customer-FAIL", "auth-1", "it-refail-1");
+        SubscribeRequest request = request("auth-DECLINE", "it-refail-1");
         assertThatThrownBy(() -> paymentService.subscribe(user.getPublicId(), request))
                 .isInstanceOf(BusinessException.class);
         long orders = paymentOrderRepository.count();
@@ -169,18 +169,19 @@ class PaymentSubscribeFlowTest {
     void newBillingKeyReplacesOldOne() {
         User user = newBasicUser("pay-rekey@harucut.com");
         assertThatThrownBy(() ->
-                paymentService.subscribe(user.getPublicId(), request("customer-FAIL", "auth-1", "it-rekey-1")))
+                paymentService.subscribe(user.getPublicId(), request("auth-DECLINE", "it-rekey-1")))
                 .isInstanceOf(BusinessException.class);
 
-        paymentService.subscribe(user.getPublicId(), request("customer-2", "auth-1", "it-rekey-2"));
+        paymentService.subscribe(user.getPublicId(), request("auth-2", "it-rekey-2"));
 
         List<BillingKey> keys = billingKeyRepository.findAll().stream()
                 .filter(key -> key.getUserId().equals(user.getId()))
                 .toList();
         assertThat(keys).hasSize(2);
+        // 첫 키에는 DECLINE 마커가 있고 새 키에는 없다 — ACTIVE로 남은 쪽이 새 키임을 마커로 구분한다
         assertThat(keys).filteredOn(key -> key.getStatus() == BillingKeyStatus.ACTIVE)
                 .singleElement()
-                .satisfies(key -> assertThat(key.getBillingKeyValue()).contains("customer-2"));
+                .satisfies(key -> assertThat(key.getBillingKeyValue()).doesNotContain("DECLINE"));
     }
 
     private User newBasicUser(String email) {
@@ -189,8 +190,8 @@ class PaymentSubscribeFlowTest {
         return user;
     }
 
-    private SubscribeRequest request(String customerKey, String authKey, String idempotencyKey) {
-        return new SubscribeRequest(PlanTier.PLUS, customerKey, authKey, idempotencyKey);
+    private SubscribeRequest request(String authKey, String idempotencyKey) {
+        return new SubscribeRequest(PlanTier.PLUS, authKey, idempotencyKey);
     }
 
     private List<Payment> paymentsOf(PaymentOrder order) {

@@ -312,6 +312,29 @@ class PaymentServiceTest {
             assertThat(captor.getValue().amount()).isEqualTo(3900);
             assertThat(captor.getValue().orderKey()).isEqualTo("order-pub-1");
             assertThat(captor.getValue().billingKeyValue()).isEqualTo("bk-1");
+            assertThat(captor.getValue().customerKey()).isEqualTo(PUBLIC_ID);
+        }
+
+        /*
+         * customerKey는 요청 DTO에 없다. 프론트 값을 믿으면 남의 customerKey로
+         * 카드를 등록할 여지가 생겨서, 서버가 principal의 publicId로 정한다.
+         */
+        @Test
+        @DisplayName("빌링키 발급의 customerKey는 요청이 아니라 principal의 publicId다")
+        void customerKeyComesFromPrincipal() {
+            givenUser();
+            givenNoExistingOrder();
+            givenBasicSubscription();
+            givenIssueSucceeds();
+            givenOrderCreated();
+            givenChargeSucceeds();
+            givenApplyReturns(ChargeApplyResult.ok(activePlusSubscription()));
+
+            service.subscribe(PUBLIC_ID, request());
+
+            ArgumentCaptor<IssueBillingKeyCommand> captor = ArgumentCaptor.forClass(IssueBillingKeyCommand.class);
+            then(paymentGateway).should().issueBillingKey(captor.capture());
+            assertThat(captor.getValue().customerKey()).isEqualTo(PUBLIC_ID);
         }
     }
 
@@ -372,6 +395,6 @@ class PaymentServiceTest {
     }
 
     private SubscribeRequest request(PlanTier tier) {
-        return new SubscribeRequest(tier, "customer-1", "auth-1", IDEM_KEY);
+        return new SubscribeRequest(tier, "auth-1", IDEM_KEY);
     }
 }

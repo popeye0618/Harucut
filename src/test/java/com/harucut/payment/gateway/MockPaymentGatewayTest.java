@@ -95,9 +95,9 @@ class MockPaymentGatewayTest {
         }
 
         @Test
-        @DisplayName("빌링키 값에 FAIL이 들어 있으면 청구가 실패한다")
-        void failsWhenBillingKeyContainsFailMarker() {
-            PaymentResult result = gateway.charge(command("mock-bk-FAIL-123"));
+        @DisplayName("빌링키 값에 DECLINE 마커가 있으면 청구가 실패한다")
+        void failsWhenBillingKeyCarriesDeclineMarker() {
+            PaymentResult result = gateway.charge(command("mock-bk-DECLINE-123"));
 
             assertThat(result.success()).isFalse();
             assertThat(result.failureCode()).isEqualTo("MOCK_CHARGE_FAILED");
@@ -114,14 +114,14 @@ class MockPaymentGatewayTest {
         }
 
         /*
-         * customerKey의 FAIL이 발급된 빌링키 값(mock-bk-{customerKey}-...)에 묻어 들어가
-         * 발급은 성공하고 청구만 실패한다. 3단계의 402 테스트가 이 연결에 기댄다.
+         * authKey의 DECLINE이 발급된 빌링키 값에 실려 들어가
+         * 발급은 성공하고 청구만 실패한다. 402 테스트가 이 연결에 기댄다.
          */
         @Test
-        @DisplayName("customerKey에 FAIL을 넣으면 발급은 성공하고 그 키로 하는 청구가 실패한다")
-        void failMarkerPropagatesFromCustomerKeyToCharge() {
+        @DisplayName("authKey에 DECLINE을 넣으면 발급은 성공하고 그 키로 하는 청구가 실패한다")
+        void declineMarkerPropagatesFromAuthKeyToCharge() {
             BillingKeyResult issued =
-                    gateway.issueBillingKey(new IssueBillingKeyCommand("customer-FAIL", "auth-1"));
+                    gateway.issueBillingKey(new IssueBillingKeyCommand("customer-1", "auth-DECLINE"));
             assertThat(issued.success()).isTrue();
 
             PaymentResult result = gateway.charge(command(issued.billingKeyValue()));

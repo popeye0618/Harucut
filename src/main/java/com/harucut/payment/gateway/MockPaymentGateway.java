@@ -17,7 +17,10 @@ import java.time.LocalDateTime;
 @RequiredArgsConstructor
 public class MockPaymentGateway implements PaymentGateway {
 
-    private static final String FAIL_MARKER = "FAIL";
+    // authKey에 FAIL → 발급 실패(502 경로), DECLINE → 발급은 성공하고 그 키의 청구가 실패(402 경로).
+    // DECLINE 마커는 빌링키 값에 실려 저장까지 통과한 뒤 청구 시점에 걸린다.
+    private static final String ISSUE_FAIL_MARKER = "FAIL";
+    private static final String CHARGE_FAIL_MARKER = "DECLINE";
 
     private final PaymentProperties properties;
     private final Clock clock;
@@ -29,18 +32,19 @@ public class MockPaymentGateway implements PaymentGateway {
 
     @Override
     public BillingKeyResult issueBillingKey(IssueBillingKeyCommand command) {
-        if (command.authKey().contains(FAIL_MARKER)) {
+        if (command.authKey().contains(ISSUE_FAIL_MARKER)) {
             return BillingKeyResult.failure("MOCK_ISSUE_FAILED", "Mock billing key issuance failed.");
         }
 
-        String billingKeyValue = "mock-bk-" + command.customerKey() + "-" + System.nanoTime();
+        String marker = command.authKey().contains(CHARGE_FAIL_MARKER) ? CHARGE_FAIL_MARKER + "-" : "";
+        String billingKeyValue = "mock-bk-" + marker + command.customerKey() + "-" + System.nanoTime();
 
         return BillingKeyResult.success(billingKeyValue, "**** **** **** 1234");
     }
 
     @Override
     public PaymentResult charge(BillingChargeCommand command) {
-        if (properties.mock().failCharge() || command.billingKeyValue().contains(FAIL_MARKER)) {
+        if (properties.mock().failCharge() || command.billingKeyValue().contains(CHARGE_FAIL_MARKER)) {
             return PaymentResult.failure("MOCK_CHARGE_FAILED", "Mock charge failed.");
         }
 

@@ -57,8 +57,10 @@ public class PaymentService {
 
         requireNotSubscribed(user.getId());
 
+        // customerKey는 요청에서 받지 않는다 — 로그인한 사용자의 publicId가 곧 customerKey다.
+        // 프론트 값을 믿으면 남의 customerKey로 카드를 등록할 여지가 생긴다.
         BillingKeyResult issued = paymentGateway.issueBillingKey(
-                new IssueBillingKeyCommand(request.customerKey(), request.authKey())
+                new IssueBillingKeyCommand(publicId, request.authKey())
         );
 
         if (!issued.success()) {
@@ -80,7 +82,7 @@ public class PaymentService {
         }
 
         PaymentResult charged = paymentGateway.charge(new BillingChargeCommand(
-                created.billingKeyValue(), created.orderPublicId(), amount, request.planTier().name() + "구독", request.customerKey()
+                created.billingKeyValue(), created.orderPublicId(), amount, request.planTier().name() + "구독", publicId
         ));
 
         PaymentTransactionService.ChargeApplyResult applied = paymentTransactionService.applyInitialChargeResult(user.getId(), created.orderId(), charged, LocalDateTime.now(clock));

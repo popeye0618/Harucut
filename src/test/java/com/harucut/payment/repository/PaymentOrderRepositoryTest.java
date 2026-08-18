@@ -11,10 +11,12 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.json.AutoConfigureJson;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.ActiveProfiles;
 
-import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
-import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 // @AutoConfigureJson: frame 엔티티의 AttributeConverter가 앱 ObjectMapper를 주입받는데,
 // Hibernate는 어떤 엔티티를 쓰든 메타모델 전체를 만들므로 모든 @DataJpaTest에 Jackson이 필요하다
@@ -53,5 +55,20 @@ class PaymentOrderRepositoryTest {
         paymentOrderRepository.flush();
 
         assertThat(paymentOrderRepository.count()).isEqualTo(2L);
+    }
+
+    @Test
+    @DisplayName("내역 조회는 내 주문만, 최신 것부터 나온다")
+    void historyIsMineNewestFirst() {
+        paymentOrderRepository.save(PaymentOrder.createInitial(10L, PlanTier.PLUS, 3900, "hist-1"));
+        paymentOrderRepository.save(PaymentOrder.createInitial(99L, PlanTier.PRO, 9900, "hist-other"));
+        paymentOrderRepository.save(PaymentOrder.createInitial(10L, PlanTier.PRO, 9900, "hist-2"));
+
+        Page<PaymentOrder> result =
+                paymentOrderRepository.findByUserIdOrderByIdDesc(10L, PageRequest.of(0, 10));
+
+        assertThat(result.getContent())
+                .extracting(PaymentOrder::getIdempotencyKey)
+                .containsExactly("hist-2", "hist-1");
     }
 }

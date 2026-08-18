@@ -7,7 +7,6 @@ import jakarta.validation.constraints.Size;
 
 public record SubscribeRequest(
         @NotNull PlanTier planTier,
-        @NotBlank String customerKey,
         @NotBlank String authKey,
         @NotBlank @Size(max = 100) String idempotencyKey
 ) {
