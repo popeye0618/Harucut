@@ -20,14 +20,10 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
-import org.springframework.security.web.util.matcher.OrRequestMatcher;
-import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-import java.util.Arrays;
 import java.util.List;
 
 @Configuration
@@ -35,31 +31,6 @@ import java.util.List;
 @EnableMethodSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
-
-    private static final String[] PUBLIC_PATHS = {
-            "/api/harucut/register",
-            "/api/harucut/login",
-            "/api/harucut/reissue",
-            "/api/harucut/logout",
-            "/api/harucut/reset/password/code",
-            "/api/harucut/reset/password",
-            "/api/harucut/reset/password/verification",
-            "/api/email-auth/**",
-            "/api/notices/**",
-            "/oauth2/**",
-            "/login/oauth2/**",
-            "/api/oauth2/unlink/naver",
-            "/api/terms",
-            "/api/payments/webhook",
-            "/swagger-ui/**",
-            "/v3/api-docs/**",
-            "/error"
-    };
-
-    private static final RequestMatcher PUBLIC_MATCHER = new OrRequestMatcher(
-            Arrays.stream(PUBLIC_PATHS)
-                    .map(PathPatternRequestMatcher::pathPattern)
-                    .toArray(RequestMatcher[]::new));
 
     private final JwtTokenService jwtTokenService;
     private final CustomAuthenticationEntryPoint authenticationEntryPoint;
@@ -95,14 +66,13 @@ public class SecurityConfig {
                 )
 
                 .addFilterBefore(
-                        new JwtAuthenticationFilter(PUBLIC_MATCHER, jwtTokenService, authenticationEntryPoint),
+                        new JwtAuthenticationFilter(SecurityPaths.publicMatcher(), jwtTokenService, authenticationEntryPoint),
                         UsernamePasswordAuthenticationFilter.class
                 )
 
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(PUBLIC_PATHS).permitAll()
-                        .requestMatchers("/api/auth/status").authenticated()
-                        .requestMatchers("/api/harucut/reactivate").authenticated()
+                        .requestMatchers(SecurityPaths.PUBLIC).permitAll()
+                        .requestMatchers(SecurityPaths.AUTHENTICATED_ONLY).authenticated()
                         .anyRequest().hasAnyRole("USER", "ADMIN")
                 );
 
