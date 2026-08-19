@@ -39,6 +39,8 @@ out/
 ### macOS ###
 .DS_Store
 
+deploy/
+monitoring/
 docs/
 .env
 CLAUDE.md

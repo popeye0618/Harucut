@@ -1,0 +1,17 @@
+.git
+.gradle
+.idea
+.claude
+build
+*/build
+docs
+deploy
+.env
+viper
+.pit-viper
+CLAUDE.md
+HELP.md
+harucut.iml
+*.log
+.DS_Store
+!build/libs/*.jar
