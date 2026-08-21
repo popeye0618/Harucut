@@ -39,6 +39,7 @@ out/
 ### macOS ###
 .DS_Store
 
+photo/
 deploy/
 monitoring/
 docs/

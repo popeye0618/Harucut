@@ -71,6 +71,14 @@ public class SecurityConfig {
                 )
 
                 .authorizeHttpRequests(auth -> auth
+                        // Prometheus 가 긁어갈 경로. 인증 수단이 없으니 통과시킨다.
+                        // 노출을 막는 것은 네트워크 쪽에서 한다 — management.server.port 로
+                        // API 포트(8080)와 분리하고, 관리 포트는 호스트로 publish 하지 않는다.
+                        // API 포트에는 actuator 가 매핑되지 않으므로 여기서 열려도 404 다.
+                        //
+                        // SecurityPaths.PUBLIC 에 넣지 않는 이유: 그 배열은 OpenAPI 문서의
+                        // 자물쇠 표시도 파생시킨다. API 경로 규칙에 관리 경로를 섞지 않는다.
+                        .requestMatchers("/actuator/**").permitAll()
                         .requestMatchers(SecurityPaths.PUBLIC).permitAll()
                         .requestMatchers(SecurityPaths.AUTHENTICATED_ONLY).authenticated()
                         .anyRequest().hasAnyRole("USER", "ADMIN")
