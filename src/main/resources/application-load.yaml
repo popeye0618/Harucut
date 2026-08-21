@@ -1,0 +1,65 @@
+# 부하 테스트용 프로파일. local 위에 얹어서 쓴다:
+#   SPRING_PROFILES_ACTIVE=local,load
+#
+# local 의 datasource·mail 설정을 그대로 물려받고, 측정에 방해되는 것만 덮어쓴다.
+# 단독으로 쓰면 DB 주소가 없어서 안 뜬다.
+
+spring:
+  jpa:
+    # local 은 true 다. 켜두면 모든 쿼리가 콘솔로 나가면서 콘솔 I/O 가 병목이 되고,
+    # 측정하는 것이 앱 성능이 아니라 터미널 속도가 된다.
+    show-sql: false
+    hibernate:
+      # 대량 데이터가 들어간 뒤 스키마가 바뀌면 기동 시 ALTER 가 몇 분 걸린다.
+      # 스키마는 local 로 한 번 띄워 만들어 두고, 이후로는 검증만 한다.
+      ddl-auto: validate
+
+  datasource:
+    hikari:
+      # 기본값과 같은 10 이다. 그래도 명시한다 —
+      # 측정 대상이 "의도한 10"이어야 나중에 20 으로 올렸을 때의 비교가 성립한다.
+      maximum-pool-size: 10
+      pool-name: harucut-pool
+
+# 합성 큐 오버플로우(#1) 재현용.
+# core=2, queue=2 -> 4건 수용, 5번째부터 RejectedExecutionException.
+# 운영 기본값은 queue 100 이라 재현하려면 103건을 던져야 하는데,
+# 합성 1건당 S3 I/O 가 실제로 발생하고 힙을 ~100MB 문다. 로컬이 먼저 죽는다.
+compose:
+  executor: lambda
+  pool:
+    core-size: 2
+    max-size: 2
+    queue-capacity: 100
+  stale-after: 90s
+  rerun:
+    interval: 30s
+    batch-size: 20
+
+management:
+  server:
+    # 관리 포트를 API 포트에서 분리한다.
+    # 8080 은 부하 도구가 때려야 해서 호스트로 열려 있다. 같은 포트에 두면
+    # /actuator/prometheus 도 같이 열려서 힙·커넥션·호출 통계가 그대로 노출된다.
+    # 8081 은 compose 네트워크 안에서만 접근된다 (호스트로 publish 하지 않는다).
+    port: 8081
+
+  endpoints:
+    web:
+      exposure:
+        # '*' 로 열지 않는다. heapdump 에는 메모리에 있던 JWT 가 그대로 들어있다.
+        include: health,prometheus,metrics
+
+  metrics:
+    tags:
+      # 서버를 2대로 늘리는 순간(#2) 두 인스턴스의 숫자가 한 덩어리로 섞인다.
+      # 지금 넣어두면 그때 설정을 안 고쳐도 된다 — compose 에서 인스턴스마다 다른 값을 준다.
+      application: harucut
+      instance: ${INSTANCE_ID:app-1}
+
+    distribution:
+      percentiles-histogram:
+        # 이게 없으면 Grafana 의 p95/p99 패널이 빈 채로 나온다.
+        # Micrometer 는 기본으로 평균과 최대만 준다.
+        # 대가: 엔드포인트마다 버킷 수만큼 시계열이 늘어난다 -> 부하 프로파일에서만 켠다.
+        http.server.requests: true
