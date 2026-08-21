@@ -6,8 +6,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record AwsProperties(
         String region,
         S3 s3,
-        // compose.executor=lambda일 때만 읽는다 — 로컬(인프로세스)은 없어도 된다
-        Lambda lambda
+        Lambda lambda,
+        Sqs sqs
 ) {
     public record S3(
             String bucket
@@ -17,5 +17,8 @@ public record AwsProperties(
     public record Lambda(
             String composeFunction
     ) {
+    }
+
+    public record Sqs(String composeResultQueueUrl) {
     }
 }

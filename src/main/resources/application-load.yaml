@@ -21,17 +21,10 @@ spring:
       maximum-pool-size: 10
       pool-name: harucut-pool
 
-# 합성 큐 오버플로우(#1) 재현용.
-# core=2, queue=2 -> 4건 수용, 5번째부터 RejectedExecutionException.
-# 운영 기본값은 queue 100 이라 재현하려면 103건을 던져야 하는데,
-# 합성 1건당 S3 I/O 가 실제로 발생하고 힙을 ~100MB 문다. 로컬이 먼저 죽는다.
+# 스레드 풀은 없어졌다 (2026-08-21 비동기 전환) — 거부될 큐가 없으니 조절할 손잡이도 없다.
+# stale-after 도 여기서 덮지 않는다: Lambda 이벤트 수명(5분)에서 파생된 값이라
+# 부하 테스트라고 짧게 잡으면 아직 살아 있는 이벤트를 다시 던지게 된다.
 compose:
-  executor: lambda
-  pool:
-    core-size: 2
-    max-size: 2
-    queue-capacity: 100
-  stale-after: 90s
   rerun:
     interval: 30s
     batch-size: 20

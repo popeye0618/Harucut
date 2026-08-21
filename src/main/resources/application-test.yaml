@@ -35,7 +35,17 @@ jwt:
 cookie:
   secure: false
 
+compose:
+  result-consumer:
+    # 켜두면 테스트가 실제 SQS 를 긁는다
+    enabled: false
+
 cloud:
   aws:
     s3:
       bucket: harucut-test
+    lambda:
+      # 테스트는 합성을 부르지 않는다. 생성자가 빈 값이면 죽어서 넣는 자리표시자다
+      compose-function: test-compose-function
+    sqs:
+      compose-result-queue-url: ""

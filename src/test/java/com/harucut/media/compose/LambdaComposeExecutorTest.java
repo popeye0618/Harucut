@@ -35,27 +35,29 @@ class LambdaComposeExecutorTest {
             "uploads/u/1.jpg", "uploads/u/2.jpg", "uploads/u/3.jpg", "uploads/u/4.jpg");
     private static final String RESULT_KEY = "uploads/u/fourcuts/job-5.png";
     private static final String THUMB_KEY = "uploads/u/fourcuts/job-5-thumb.jpg";
+    private static final Long JOB_ID = 5L;
 
     @Mock
     private LambdaClient lambdaClient;
 
     @Test
-    @DisplayName("동기 호출로 함수 이름·버킷·스펙이 담긴 payload를 보낸다")
+    @DisplayName("비동기 호출로 함수 이름·버킷·jobId·스펙이 담긴 payload를 보낸다")
     void invokesWithSerializedPayload() {
         LambdaComposeExecutor executor = executor();
         given(lambdaClient.invoke(any(InvokeRequest.class)))
-                .willReturn(InvokeResponse.builder().statusCode(200).build());
+                .willReturn(InvokeResponse.builder().statusCode(202).build());
 
-        executor.execute(spec(), SOURCE_KEYS, RESULT_KEY, THUMB_KEY);
+        executor.execute(event());
 
         ArgumentCaptor<InvokeRequest> captor = ArgumentCaptor.captor();
         then(lambdaClient).should().invoke(captor.capture());
         InvokeRequest request = captor.getValue();
         assertThat(request.functionName()).isEqualTo("harucut-compose");
-        assertThat(request.invocationType()).isEqualTo(InvocationType.REQUEST_RESPONSE);
+        assertThat(request.invocationType()).isEqualTo(InvocationType.EVENT);
         ComposeLambdaPayload payload = MAPPER.readValue(
                 request.payload().asUtf8String(), ComposeLambdaPayload.class);
         assertThat(payload.bucket()).isEqualTo("harucut-test");
+        assertThat(payload.jobId()).isEqualTo(JOB_ID);
         assertThat(payload.sourceKeys()).containsExactlyElementsOf(SOURCE_KEYS);
         assertThat(payload.resultKey()).isEqualTo(RESULT_KEY);
         assertThat(payload.thumbnailKey()).isEqualTo(THUMB_KEY);
@@ -63,37 +65,38 @@ class LambdaComposeExecutorTest {
     }
 
     @Test
-    @DisplayName("FunctionError가 오면 예외로 바꾼다 — 워커가 FAILED로 기록하게")
-    void functionErrorBecomesException() {
+    @DisplayName("접수가 202가 아니면 예외로 바꾼다 — 워커가 PENDING으로 두고 재실행에 맡긴다")
+    void nonAcceptedStatusBecomesException() {
         LambdaComposeExecutor executor = executor();
+        // 비동기 호출은 함수가 돌기 전에 응답이 온다. 그래서 여기서 알 수 있는 실패는
+        // "함수가 죽었다"가 아니라 "접수를 못 시켰다"뿐이다 — 실행 실패는 Destination으로 온다
         given(lambdaClient.invoke(any(InvokeRequest.class)))
                 .willReturn(InvokeResponse.builder()
-                        .statusCode(200)
-                        .functionError("Unhandled")
-                        .payload(SdkBytes.fromUtf8String("{\"errorMessage\":\"OOM\"}"))
+                        .statusCode(500)
+                        .payload(SdkBytes.fromUtf8String("{\"Message\":\"Service Unavailable\"}"))
                         .build());
 
-        assertThatThrownBy(() -> executor.execute(spec(), SOURCE_KEYS, RESULT_KEY, THUMB_KEY))
+        assertThatThrownBy(() -> executor.execute(event()))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("Unhandled");
+                .hasMessageContaining("500");
     }
 
     @Test
-    @DisplayName("정상 응답(200, 에러 없음)이면 조용히 끝난다")
+    @DisplayName("접수 성공(202)이면 조용히 끝난다 — 이 응답은 완료 통지가 아니다")
     void successReturnsQuietly() {
         LambdaComposeExecutor executor = executor();
         given(lambdaClient.invoke(any(InvokeRequest.class)))
-                .willReturn(InvokeResponse.builder().statusCode(200).build());
+                .willReturn(InvokeResponse.builder().statusCode(202).build());
 
-        assertThatCode(() -> executor.execute(spec(), SOURCE_KEYS, RESULT_KEY, THUMB_KEY))
+        assertThatCode(() -> executor.execute(event()))
                 .doesNotThrowAnyException();
     }
 
     @Test
-    @DisplayName("스위치는 켰는데 함수 이름이 없으면 기동에서 죽는다 — 첫 요청에서 죽는 것보다 낫다")
+    @DisplayName("함수 이름이 없으면 기동에서 죽는다 — 첫 요청에서 죽는 것보다 낫다")
     void missingFunctionNameFailsAtStartup() {
         AwsProperties noFunction = new AwsProperties("ap-northeast-2",
-                new AwsProperties.S3("harucut-test"), null);
+                new AwsProperties.S3("harucut-test"), null, null);
 
         assertThatThrownBy(() -> new LambdaComposeExecutor(lambdaClient, MAPPER, noFunction))
                 .isInstanceOf(IllegalStateException.class);
@@ -104,7 +107,11 @@ class LambdaComposeExecutorTest {
     private LambdaComposeExecutor executor() {
         return new LambdaComposeExecutor(lambdaClient, MAPPER, new AwsProperties(
                 "ap-northeast-2", new AwsProperties.S3("harucut-test"),
-                new AwsProperties.Lambda("harucut-compose")));
+                new AwsProperties.Lambda("harucut-compose"), null));
+    }
+
+    private static ComposeRequestedEvent event() {
+        return new ComposeRequestedEvent(JOB_ID, spec(), SOURCE_KEYS, RESULT_KEY, THUMB_KEY);
     }
 
     private static ComposeSpec spec() {
