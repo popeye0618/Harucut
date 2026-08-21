@@ -40,5 +40,91 @@ services:
       - "1025:1025"   # SMTP — application.yaml의 MAIL_PORT 기본값과 일치
       - "8025:8025"   # Web UI
 
+  # ── 아래 셋은 부하 테스트용이다 ────────────────────────────────
+  # profiles 를 달아서 평소 `docker compose up` 은 인프라만 띄우던 그대로 둔다.
+  # 부하 테스트할 때만:  docker compose --profile load up -d --build
+  #
+  # 앱을 컨테이너로 띄우는 이유는 monitoring/02-environment.md 참고 —
+  # 요약하면 자원 제한을 걸어야 측정이 재현 가능해지기 때문이다.
+
+  app:
+    profiles: ["load"]
+    build:
+      context: .
+      # 미리 빌드된 jar 를 복사만 한다. 먼저 ./gradlew bootJar 를 돌려야 한다.
+      dockerfile: Dockerfile.local
+    stop_grace_period: 60s
+    container_name: harucut-app
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      SPRING_PROFILES_ACTIVE: local,load
+      # .env 의 값은 호스트 기준(localhost)이라 컨테이너 안에서는 안 통한다.
+      # environment 가 env_file 을 덮어쓴다.
+      DB_URL: "jdbc:mysql://mysql:3306/${MYSQL_DATABASE}?characterEncoding=UTF-8&serverTimezone=Asia/Seoul"
+      REDIS_HOST: redis
+      MAIL_HOST: mailpit
+      MAIL_PORT: "1025"
+      # 메트릭에 붙는 인스턴스 태그. #2에서 2대로 늘릴 때 여기만 다르게 준다.
+      INSTANCE_ID: app-1
+    ports:
+      # API 포트만 연다. 부하 도구가 여기를 때린다.
+      - "8080:8080"
+      # 관리 포트(8081)는 일부러 publish 하지 않는다.
+      # /actuator/prometheus 가 호스트로 노출되면 힙·커넥션·호출 통계가 그대로 새어나간다.
+      # Prometheus 는 같은 네트워크 안에 있어서 app:8081 로 닿는다.
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          # "내 노트북 전체"가 아니라 고정된 스펙에서 재야 측정이 재현된다.
+          # EC2 대신 로컬로 가기로 한 근거가 이것이다. 값은 실측하며 조정한다.
+          cpus: "2"
+          memory: 2g
+
+  prometheus:
+    profiles: ["load"]
+    image: prom/prometheus:latest
+    container_name: harucut-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - harucut-prometheus-data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      # 로컬 테스트 데이터를 한 달씩 들고 있을 이유가 없다.
+      - --storage.tsdb.retention.time=7d
+
+  grafana:
+    profiles: ["load"]
+    image: grafana/grafana:latest
+    container_name: harucut-grafana
+    restart: unless-stopped
+    ports:
+      # Grafana 기본 포트는 3000 인데, SecurityConfig 의 CORS 목록에 localhost:3000 이
+      # 있는 걸 보면 프론트가 그 포트를 쓴다. 충돌을 피해 3001 로 연다.
+      - "3001:3000"
+    environment:
+      # 로컬 전용. 매번 로그인하지 않으려고 익명 접속을 연다.
+      # 이 compose 를 외부에 노출되는 곳에서 쓰면 안 되는 이유이기도 하다.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+    volumes:
+      - harucut-grafana-data:/var/lib/grafana
+      # 데이터소스를 자동 등록한다 — 컨테이너를 새로 만들어도 손으로 안 붙여도 된다.
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+
 volumes:
   harucut-mysql-data:
+  # 이 둘이 없으면 컨테이너를 지울 때마다 측정 이력과 대시보드가 날아간다.
+  harucut-prometheus-data:
+  harucut-grafana-data:
