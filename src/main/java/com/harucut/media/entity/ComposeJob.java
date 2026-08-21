@@ -10,6 +10,7 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 // 네컷 합성 작업 한 건의 장부 행 — 이 테이블이 내구성 있는 큐다.
@@ -71,6 +72,9 @@ public class ComposeJob extends BaseEntity {
 
     @Column(name = "failure_reason")
     private String failureReason;
+
+    @Column(name = "started_at")
+    private LocalDateTime startedAt;
 
     private ComposeJob(User user, Long frameId, String idempotencyKey,
                        List<String> sourceKeys, ComposeSpec spec) {

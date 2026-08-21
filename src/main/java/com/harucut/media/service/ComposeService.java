@@ -21,10 +21,12 @@ import com.harucut.user.entity.User;
 import com.harucut.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -100,6 +102,26 @@ public class ComposeService {
 
     public void failJob(Long jobId, String reason) {
         composeJobRepository.findById(jobId).ifPresent(job -> job.fail(reason));
+    }
+
+    public boolean claim(Long jobId, Duration staleAfter) {
+        LocalDateTime now = LocalDateTime.now(clock);
+        return composeJobRepository.claim(jobId, now, now.minus(staleAfter)) == 1;
+    }
+
+    // 재실행 대상을 실행 payload 로 바꿔 내보낸다. 엔티티를 밖으로 내보내지 않는 이유는
+    // 워커가 트랜잭션 밖에서 돌기 때문이다 — 지연 로딩이 거기서 터진다
+    @Transactional(readOnly = true)
+    public List<ComposeRequestedEvent> findStalled(Duration staleAfter, int limit) {
+        LocalDateTime staleBefore = LocalDateTime.now(clock).minus(staleAfter);
+        return composeJobRepository.findStalled(staleBefore, PageRequest.of(0, limit)).stream()
+                .map(job -> {
+                    String publicId = job.getUser().getPublicId();
+                    return new ComposeRequestedEvent(job.getId(), job.getSpec(), job.sourceKeys(),
+                            resultKeyFor(publicId, job.getId()),
+                            thumbnailKeyFor(publicId, job.getId()));
+                })
+                .toList();
     }
 
     // Job당 결정적 결과 key — 재실행이 겹쳐도 같은 객체를 덮어쓰므로 고아 파일이 안 생기고,
