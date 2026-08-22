@@ -18,6 +18,20 @@ java {
     }
 }
 
+// 소스가 UTF-8 인데 javac 은 이걸 모른다 — 안 주면 Gradle 데몬을 띄운 JVM 의
+// 기본 charset 을 쓴다. JDK 18 부터는 그게 UTF-8 이지만(JEP 400) 17 이하면
+// 한국어 Windows 에서 MS949 라, 같은 소스가 데몬 JVM 에 따라 다르게 컴파일된다.
+// 실제로 JDK 17 데몬에서 "unmappable character for encoding x-windows-949" 200 건이
+// 나면서 문자열 리터럴의 한글이 깨진 채로 class 에 들어갔다. 빌드는 성공한다 — 그래서 더 나쁘다.
+//
+// subprojects 가 아니라 allprojects 다. 루트가 서버 모듈이라 여기가 빠지면
+// 정작 한글이 가장 많은 곳이 안 덮인다.
+allprojects {
+    tasks.withType(JavaCompile).configureEach {
+        options.encoding = 'UTF-8'
+    }
+}
+
 repositories {
     mavenCentral()
 }
