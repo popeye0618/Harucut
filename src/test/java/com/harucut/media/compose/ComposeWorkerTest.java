@@ -23,6 +23,9 @@ import static org.mockito.BDDMockito.never;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willThrow;
 
+// 워커의 계약이 비동기 전환으로 바뀌었다: 이제 Job을 끝내지 않는다.
+// 선점하고 Lambda에 접수시키는 데까지가 전부고, DONE/FAILED는 ComposeResultConsumer가 찍는다.
+// 그래서 이 테스트의 대부분은 "무엇을 하는가"가 아니라 "무엇을 하지 않는가"를 본다
 @ExtendWith(MockitoExtension.class)
 @DisplayName("ComposeWorker")
 class ComposeWorkerTest {
@@ -32,7 +35,7 @@ class ComposeWorkerTest {
             "uploads/u/1.jpg", "uploads/u/2.jpg", "uploads/u/3.jpg", "uploads/u/4.jpg");
     private static final String RESULT_KEY = "uploads/u/fourcuts/job-5.png";
     private static final String THUMB_KEY = "uploads/u/fourcuts/job-5-thumb.jpg";
-    private static final Duration STALE_AFTER = Duration.ofMinutes(5);
+    private static final Duration STALE_AFTER = Duration.ofMinutes(10);
 
     @Mock
     private ComposeExecutor composeExecutor;
@@ -48,54 +51,34 @@ class ComposeWorkerTest {
     }
 
     @Test
-    @DisplayName("실행이 끝난 뒤에 완료를 기록한다 — 순서 보장")
-    void executesThenCompletes() {
+    @DisplayName("선점한 뒤 실행기에 넘기고 끝난다 — 결과는 기록하지 않는다")
+    void claimsThenHandsOffToExecutor() {
         given(composeService.claim(JOB_ID, STALE_AFTER)).willReturn(true);
 
         worker.handle(event());
 
         InOrder order = inOrder(composeExecutor, composeService);
+        // 선점이 먼저다. 반대면 통지가 먼저 돌아와 아직 도장 안 찍힌 Job을 만난다
         order.verify(composeService).claim(JOB_ID, STALE_AFTER);
-        order.verify(composeExecutor).execute(event().spec(), SOURCE_KEYS, RESULT_KEY, THUMB_KEY);
-        order.verify(composeService).completeJob(JOB_ID, RESULT_KEY, THUMB_KEY);
+        order.verify(composeExecutor).execute(event());
+        // 여기서 completeJob을 부르면 아직 그리지도 않은 Job이 DONE이 된다 —
+        // 비동기 invoke는 "접수했다"는 뜻일 뿐이다
+        then(composeService).should(never()).completeJob(any(), any(), any());
         then(composeService).should(never()).failJob(any(), anyString());
     }
 
     @Test
-    @DisplayName("실행이 죽으면 실패로 기록하고 완료는 부르지 않는다")
-    void executionFailureRecorded() {
+    @DisplayName("접수가 실패해도 FAILED로 적지 않는다 — PENDING으로 둬야 재실행이 줍는다")
+    void acceptanceFailureLeavesJobPending() {
         given(composeService.claim(JOB_ID, STALE_AFTER)).willReturn(true);
-        willThrow(new IllegalStateException("S3 다운로드 실패"))
-                .given(composeExecutor).execute(any(), any(), any(), any());
+        willThrow(new IllegalStateException("Lambda 접수 실패 (status=500)"))
+                .given(composeExecutor).execute(any());
 
-        worker.handle(event());
-
-        then(composeService).should().failJob(JOB_ID, "S3 다운로드 실패");
-        then(composeService).should(never()).completeJob(any(), any(), any());
-    }
-
-    @Test
-    @DisplayName("완료 기록이 죽어도 실패 기록을 시도한다")
-    void completionFailureFallsBackToFail() {
-        given(composeService.claim(JOB_ID, STALE_AFTER)).willReturn(true);
-        willThrow(new IllegalStateException("DB 오류"))
-                .given(composeService).completeJob(JOB_ID, RESULT_KEY, THUMB_KEY);
-
-        worker.handle(event());
-
-        then(composeService).should().failJob(JOB_ID, "DB 오류");
-    }
-
-    @Test
-    @DisplayName("실패 기록마저 죽어도 워커는 터지지 않는다 — 로그만 남기고 삼킨다")
-    void failRecordingFailureSwallowed() {
-        given(composeService.claim(JOB_ID, STALE_AFTER)).willReturn(true);
-        willThrow(new IllegalStateException("실행 실패"))
-                .given(composeExecutor).execute(any(), any(), any(), any());
-        willThrow(new IllegalStateException("DB도 죽음"))
-                .given(composeService).failJob(any(), anyString());
-
+        // 예외가 밖으로 새면 @Async 스레드나 스케줄러 루프가 그걸 뒤집어쓴다
         assertThatCode(() -> worker.handle(event())).doesNotThrowAnyException();
+
+        then(composeService).should(never()).failJob(any(), anyString());
+        then(composeService).should(never()).completeJob(any(), any(), any());
     }
 
     @Test
@@ -111,7 +94,7 @@ class ComposeWorkerTest {
     }
 
     @Test
-    @DisplayName("재실행도 이벤트와 같은 문을 지난다 — 선점을 거쳐 실행하고 기록한다")
+    @DisplayName("재실행도 이벤트와 같은 문을 지난다 — 선점을 거쳐 접수한다")
     void rerunTakesSamePath() {
         given(composeService.claim(JOB_ID, STALE_AFTER)).willReturn(true);
 
@@ -119,8 +102,7 @@ class ComposeWorkerTest {
 
         InOrder order = inOrder(composeExecutor, composeService);
         order.verify(composeService).claim(JOB_ID, STALE_AFTER);
-        order.verify(composeExecutor).execute(event().spec(), SOURCE_KEYS, RESULT_KEY, THUMB_KEY);
-        order.verify(composeService).completeJob(JOB_ID, RESULT_KEY, THUMB_KEY);
+        order.verify(composeExecutor).execute(event());
     }
 
     private static ComposeRequestedEvent event() {

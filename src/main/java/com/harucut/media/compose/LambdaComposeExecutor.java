@@ -2,7 +2,6 @@ package com.harucut.media.compose;
 
 import com.harucut.storage.config.AwsProperties;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import software.amazon.awssdk.core.SdkBytes;
 import software.amazon.awssdk.services.lambda.LambdaClient;
@@ -11,14 +10,11 @@ import software.amazon.awssdk.services.lambda.model.InvokeRequest;
 import software.amazon.awssdk.services.lambda.model.InvokeResponse;
 import tools.jackson.databind.ObjectMapper;
 
-import java.util.List;
-
-// 운영 실행기 — 그리지 않고 Lambda를 동기 호출한다. 호출의 응답이 곧 완료 통지라서
+// 실행기 — 그리지 않고 Lambda를 동기 호출한다. 호출의 응답이 곧 완료 통지라서
 // 콜백 엔드포인트·큐가 필요 없다 (decisions.md 네컷 합성 결정).
 // 실패(FunctionError)는 예외로 바꿔 워커가 Job을 FAILED로 기록하게 한다
 @Slf4j
 @Component
-@ConditionalOnProperty(name = "compose.executor", havingValue = "lambda")
 public class LambdaComposeExecutor implements ComposeExecutor {
 
     private final LambdaClient lambdaClient;
@@ -41,20 +37,21 @@ public class LambdaComposeExecutor implements ComposeExecutor {
     }
 
     @Override
-    public void execute(ComposeSpec spec, List<String> sourceKeys, String resultKey,
-                        String thumbnailKey) {
-        String payload = objectMapper.writeValueAsString(
-                new ComposeLambdaPayload(bucket, spec, sourceKeys, resultKey, thumbnailKey));
+    public void execute(ComposeRequestedEvent event) {
+        String payload = objectMapper.writeValueAsString(new ComposeLambdaPayload(
+                bucket, event.jobId(), event.spec(), event.sourceKeys(),
+                event.resultKey(), event.thumbnailKey()));
 
         InvokeResponse response = lambdaClient.invoke(InvokeRequest.builder()
                 .functionName(functionName)
-                .invocationType(InvocationType.REQUEST_RESPONSE)
+                .invocationType(InvocationType.EVENT)
                 .payload(SdkBytes.fromUtf8String(payload))
                 .build());
 
-        if (response.functionError() != null || response.statusCode() != 200) {
-            throw new IllegalStateException("Lambda 합성 실패 (" + response.functionError() + "): "
-                    + excerpt(response.payload()));
+        // 비동기 접수는 202다. 200을 기대하면 성공한 호출이 전부 예외가 된다
+        if (response.statusCode() != 202) {
+            throw new IllegalStateException("Lambda 접수 실패 (status=" + response.statusCode()
+                    + "): " + excerpt(response.payload()));
         }
     }
 

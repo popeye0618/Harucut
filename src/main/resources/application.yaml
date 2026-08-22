@@ -103,8 +103,9 @@ cloud:
     s3:
       bucket: ${S3_BUCKET}
     lambda:
-      # compose.executor=lambda일 때만 필요 — 로컬(기본 in-process)은 비워둔다
       compose-function: ${COMPOSE_LAMBDA_FUNCTION:}
+    sqs:
+      compose-result-queue-url: ${COMPOSE_RESULT_QUEUE_URL:}
 
 payment:
   gateway:
@@ -129,4 +130,4 @@ server:
   shutdown: graceful
 
 compose:
-  stale-after: 5m
+  stale-after: 10m

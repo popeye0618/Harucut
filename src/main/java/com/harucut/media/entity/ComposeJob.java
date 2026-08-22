@@ -16,7 +16,19 @@ import java.util.List;
 // 네컷 합성 작업 한 건의 장부 행 — 이 테이블이 내구성 있는 큐다.
 // 서버가 죽어도 PENDING 행이 남고, 오래된 PENDING은 재실행된다 (decisions.md 네컷 합성 결정)
 @Entity
-@Table(name = "compose_job", uniqueConstraints =
+@Table(name = "compose_job",
+        // ComposeRerunScheduler가 30초마다 findStalled를 돈다:
+        //   WHERE status = PENDING AND (started_at IS NULL OR started_at < ?)
+        // 이 테이블은 단조 증가한다 — 완료된 Job을 지우는 배치가 없다(deleteByUserId는 탈퇴용).
+        // 인덱스가 없으면 그 풀스캔 비용이 누적 행 수를 따라 계속 자란다.
+        // 지금 규모에서 느려서 거는 게 아니라, 큰 테이블에 나중에 거는 편이 훨씬 비싸서 건다.
+        //
+        // ⚠️ ddl-auto가 운영은 none, load는 validate인데 Hibernate의 validate는 인덱스를
+        //    검사하지 않는다(테이블·컬럼·타입만 본다). 이 애노테이션만으로는 기존 DB에
+        //    인덱스가 생기지 않는다 — local(update)로 새로 만들거나 CREATE INDEX를 직접 쳐야 한다
+        indexes = @Index(name = "idx_compose_job_status_started_at",
+                columnList = "status, started_at"),
+        uniqueConstraints =
         @UniqueConstraint(name = "uk_compose_job_user_idempotency",
                 columnNames = {"user_id", "idempotency_key"}))
 @Getter

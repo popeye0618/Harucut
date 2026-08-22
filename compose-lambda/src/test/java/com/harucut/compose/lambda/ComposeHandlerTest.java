@@ -49,6 +49,7 @@ class ComposeHandlerTest {
     private static final String THUMB_KEY = "uploads/users/abc/fourcuts/job-5-thumb.jpg";
     private static final List<String> SOURCE_KEYS = List.of(
             "uploads/u/1.jpg", "uploads/u/2.jpg", "uploads/u/3.jpg", "uploads/u/4.jpg");
+    private static final Long JOB_ID = 5L;
 
     @Mock
     private S3Client s3Client;
@@ -110,6 +111,31 @@ class ComposeHandlerTest {
     }
 
     @Test
+    @DisplayName("jobId 없는 옛 payload도 그대로 그린다 — Lambda를 서버보다 먼저 배포해도 안전")
+    void legacyPayloadWithoutJobId() throws IOException {
+        ComposeSpec spec = new ComposeSpec(40, 40,
+                new BackgroundAttributes.Color("#FFFFFF"),
+                fourSlots(), List.of(false, false, false, false), List.of());
+        given(s3Client.getObjectAsBytes(any(GetObjectRequest.class)))
+                .willReturn(ResponseBytes.fromByteArray(
+                        GetObjectResponse.builder().build(), solidPng(10, 10, Color.RED)));
+        // jobId 도입 전 서버의 wire 포맷. 핸들러는 이 값을 읽지 않으므로 없어도 결과가 같아야 한다 —
+        // 이게 "Lambda 를 서버보다 먼저 배포한다"는 규칙을 코드로 고정한다
+        String legacyJson = MAPPER.writeValueAsString(Map.of(
+                "bucket", BUCKET, "spec", spec, "sourceKeys", SOURCE_KEYS,
+                "resultKey", RESULT_KEY, "thumbnailKey", THUMB_KEY));
+
+        new ComposeHandler(s3Client).handleRequest(
+                new ByteArrayInputStream(legacyJson.getBytes(StandardCharsets.UTF_8)),
+                new ByteArrayOutputStream(), null);
+
+        ArgumentCaptor<PutObjectRequest> captor = ArgumentCaptor.captor();
+        then(s3Client).should(times(2)).putObject(captor.capture(), any(RequestBody.class));
+        assertThat(captor.getAllValues()).extracting(PutObjectRequest::key)
+                .containsExactly(RESULT_KEY, THUMB_KEY);
+    }
+
+    @Test
     @DisplayName("원본 4장과 스펙이 참조하는 자산(배경·레이어)을 전부 내려받는다")
     void downloadsSourcesAndAssets() throws IOException {
         ComposeSpec spec = new ComposeSpec(40, 40,
@@ -137,7 +163,7 @@ class ComposeHandlerTest {
 
     private static ByteArrayInputStream payloadStream(ComposeSpec spec) {
         String json = MAPPER.writeValueAsString(
-                new ComposeLambdaPayload(BUCKET, spec, SOURCE_KEYS, RESULT_KEY, THUMB_KEY));
+                new ComposeLambdaPayload(BUCKET, JOB_ID, spec, SOURCE_KEYS, RESULT_KEY, THUMB_KEY));
         return new ByteArrayInputStream(json.getBytes(StandardCharsets.UTF_8));
     }
 
