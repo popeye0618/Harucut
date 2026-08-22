@@ -19,7 +19,7 @@ import java.util.concurrent.TimeUnit;
 
 // Lambda Destination 통지를 받아 Job을 DONE/FAILED로 확정한다.
 //
-// @Scheduled가 아니라 전용 스레드인 이유: 롱폴링이 스레드를 10초씩 붙잡는다.
+// @Scheduled가 아니라 전용 스레드인 이유: 롱폴링이 스레드를 20초씩 붙잡는다.
 // 스케줄링 풀(4개)에 넣으면 배치들과 자리를 다투고, 그 결합이 설정 파일에 숨는다.
 //
 // SmartLifecycle의 기본 phase(Integer.MAX_VALUE)를 그대로 쓴다 — 스프링은 높은 phase부터
@@ -31,8 +31,27 @@ import java.util.concurrent.TimeUnit;
 @ConditionalOnProperty(name = "compose.result-consumer.enabled", havingValue = "true", matchIfMissing = true)
 public class ComposeResultConsumer implements SmartLifecycle {
 
-    private static final int WAIT_SECONDS = 10;
+    // 롱폴링 상한값(20)이다. 더 짧게 잡을 이유가 없다 — 메시지가 도착하면 즉시 반환하므로
+    // 이 값은 통지 지연에 영향이 없고, 큐가 비어 있을 때의 유휴 호출 수만 정한다.
+    // 20초면 인스턴스당 월 13만 회라 무료 티어(100만) 안에서 7대까지 늘릴 수 있다.
+    // 거짓 빈 응답(메시지가 있는데 빈 응답이 오는 것)도 값이 낮을수록 잦아진다.
+    // 대가는 종료 대기가 최악 20초로 느는 것뿐이고 stop_grace_period(60초) 안이다.
+    //
+    // ⚠️ 큐 속성 ReceiveMessageWaitTimeSeconds는 이 값에 덮인다 — 요청 파라미터가 이긴다.
+    //    콘솔에서 바꿔도 아무 일이 안 일어나므로 값은 여기서만 고친다.
+    // ⚠️ SqsClient의 소켓 타임아웃(기본 30초)보다 짧아야 한다.
+    //    넘기면 모든 폴링이 타임아웃 예외로 끝나면서 "가끔 느린 것"처럼 보인다
+    private static final int WAIT_SECONDS = 20;
     private static final int MAX_MESSAGES = 10;
+
+    // 큐 기본값과 같은 30초다. 그래도 명시한다 — 안 주면 큐 속성을 따르게 되고,
+    // 그 값은 콘솔에서 누가 바꿔도 코드 리뷰에 안 잡힌다 (WAIT_SECONDS와 같은 이유).
+    //
+    // 처리 시간의 상한이기도 하다. handle()이 30초를 넘기면 같은 통지가 다시 배달되고
+    // 두 스레드가 같은 Job을 건드린다 — completeJob의 status != PENDING 조기 반환이
+    // 그걸 흡수하지만, 그건 방어선이지 설계가 아니다. 통지 처리는 DB 트랜잭션 하나라
+    // 30초는 매우 넉넉하다. 처리에 외부 호출이 붙는 날 이 값을 다시 봐야 한다
+    private static final int VISIBILITY_TIMEOUT_SECONDS = 30;
     private static final long ERROR_BACKOFF_MILLIS = 5_000;
 
     private final SqsClient sqsClient;
@@ -75,7 +94,7 @@ public class ComposeResultConsumer implements SmartLifecycle {
             return;
         }
         // shutdownNow로 인터럽트를 건다. SDK의 블로킹 호출이 즉시 안 깨질 수 있지만
-        // 롱폴링이 10초라 최악도 그 안이다
+        // 롱폴링이 20초라 최악도 그 안이다
         worker.shutdownNow();
         try {
             if (!worker.awaitTermination(WAIT_SECONDS + 5, TimeUnit.SECONDS)) {
@@ -115,6 +134,7 @@ public class ComposeResultConsumer implements SmartLifecycle {
                 .queueUrl(queueUrl)
                 .maxNumberOfMessages(MAX_MESSAGES)
                 .waitTimeSeconds(WAIT_SECONDS)
+                .visibilityTimeout(VISIBILITY_TIMEOUT_SECONDS)
                 .build()).messages();
 
         for (Message message : messages) {
