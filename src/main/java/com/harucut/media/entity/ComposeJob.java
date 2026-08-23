@@ -14,7 +14,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 // 네컷 합성 작업 한 건의 장부 행 — 이 테이블이 내구성 있는 큐다.
-// 서버가 죽어도 PENDING 행이 남고, 오래된 PENDING은 재실행된다 (decisions.md 네컷 합성 결정)
+// 서버가 죽어도 PENDING 행이 남고, 오래된 PENDING은 재실행된다
+// (docs/adr-0001-compose-result-channel.md)
 @Entity
 @Table(name = "compose_job",
         // ComposeRerunScheduler가 30초마다 findStalled를 돈다:

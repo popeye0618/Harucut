@@ -13,7 +13,7 @@ import java.time.Duration;
 // 비동기 invoke가 수십 ms에 끝나므로 요청 스레드에서 그대로 부른다 — 스레드풀도 큐도 없다.
 //
 // 이 클래스는 Job을 끝내지 않는다. DONE/FAILED는 Lambda Destination 통지를 받은
-// ComposeResultConsumer가 찍는다 (decisions.md 2026-08-21 «합성 Lambda 호출을 비동기로»)
+// ComposeResultConsumer가 찍는다 (docs/adr-0001-compose-result-channel.md)
 @Slf4j
 @Component
 public class ComposeWorker {

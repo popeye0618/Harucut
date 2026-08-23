@@ -103,22 +103,26 @@ SQS는 밀어주지 않고 서버가 가져가는 구조라 "어떻게 가져올
 
 - **아직 측정하지 않았다.** ADR-0001·0002는 코드와 AWS 문서에서 유도한 논증이고,
   숫자로 못을 박는 건 실험 문서의 몫이다. 실행 전에는 "제안됨"으로 둔다.
-- **`decisions.md`와의 관계.** 코드 주석 여러 곳이 `decisions.md`를 가리키는데
-  (`ComposeService.completeJob`, `ComposeWorker`, `LambdaComposeExecutor`),
-  그 파일은 이 리포에 없다. 다른 작업 환경에 있는 파일이므로, 합치는 시점에
-  ADR 번호로 링크를 바꾸거나 `decisions.md`를 여기로 옮겨 단일 출처로 만들 것.
+- **`decisions.md`는 없어졌다.** 그 내용은 ADR-0001~0004로 쪼개졌고,
+  코드 주석의 참조도 전부 ADR 번호로 바꿨다. 이 폴더가 결정의 단일 출처다.
 
 ## 미결 (follow-up)
 
-- `LambdaComposeExecutor` 클래스 주석이 옛 설계 그대로다 — "**동기 호출**한다.
-  호출의 응답이 곧 완료 통지라서 **콜백 엔드포인트·큐가 필요 없다**". 바로 아래 코드는
-  `InvocationType.EVENT`에 202 검사고, SQS 큐도 생겼다. 주석이 코드와 정반대다.
-- **콘솔의 `ReceiveMessageWaitTimeSeconds=20`이 지금 무시되고 있다.**
-  코드가 요청마다 `waitTimeSeconds(10)`을 넘기는데, **요청 파라미터가 큐 속성을 이긴다.**
-  실제 동작은 10초다 → [ADR-0003 §0](adr-0003-sqs-consumption.md)
-- **가시성 타임아웃을 코드에서 정하지 않는다** → 큐 기본값 30초에 암묵적으로 의존 중.
-  명시하고 문서에 남겨야 한다 → [ADR-0003 §8](adr-0003-sqs-consumption.md)
 - `compose.stale-after: 10m`은 **Lambda `maximumEventAgeInSeconds`가 300(5분)으로
   설정돼 있다는 전제** 위에 서 있다. 기본값은 21600(6시간)이다. 기본값 그대로면
   10분 뒤 재실행이 아직 살아 있는 이벤트를 다시 던져 같은 합성이 여러 번 돈다.
-  AWS 설정을 코드 옆에 남길 자리(IaC 또는 이 폴더의 운영 문서)가 필요하다.
+  지금 그 설정은 `compose-lambda/README.md`의 CLI 한 줄로만 존재한다 —
+  IaC로 옮기거나, 최소한 기동 시 실제 값을 읽어 검증해야 한다.
+- **합성 파이프라인에 Micrometer 지표가 없다.** "지금 몇 건이 PENDING 인가"를
+  볼 방법이 없다. 운영 프로파일에 `/actuator/prometheus` 도 안 열려 있다.
+- **`compose_job` 을 지우는 배치가 없다.** 하루 100만 건 기준 1년에 3.65억 행(약 0.9TB)이다.
+  파티셔닝은 테이블이 작은 지금이 아니면 못 한다 — [감사 보고서](audit-compose-2026-08-23.md) C-4.
+- 그 밖의 미결은 [감사 보고서](audit-compose-2026-08-23.md) 의 실행 순서표를 따른다.
+
+### 해결됨
+
+- ~~`LambdaComposeExecutor` 클래스 주석이 옛 설계 그대로다~~ — 고쳤다.
+- ~~콘솔의 `ReceiveMessageWaitTimeSeconds` 가 무시되고 있다~~ — 코드가 20을 명시한다.
+- ~~가시성 타임아웃을 코드에서 정하지 않는다~~ — 30초를 명시한다.
+- ~~AFTER_COMMIT 리스너에서 즉시 접수가 동작하지 않는다~~ — `claim` 에 REQUIRES_NEW.
+- ~~프레임 자산 key 에 소유자 검사가 없다~~ — `S3Keys.assertOwnedBy` 로 모았다.

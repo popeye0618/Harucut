@@ -187,7 +187,8 @@ public class ComposeResultConsumer implements SmartLifecycle {
         // EventAgeExceeded · ZeroReservedConcurrency, 그리고 앞으로 AWS가 추가할 값들.
         // 전부 "일시적"으로 본다 — PENDING 그대로 두면 ComposeRerunScheduler가 다시 던진다.
         // 여기서 failJob을 부르면 재시도 가능한 실패가 영구 손실이 된다
-        // (2026-08-21 측정에서 429가 정확히 그렇게 죽었다. decisions.md 참고)
+        // (2026-08-21 측정에서 429가 정확히 그렇게 죽었다.
+        //  docs/adr-0001-compose-result-channel.md 참고)
         log.warn("[합성 통지] 일시적 실패로 본다 — PENDING 유지: jobId={} condition={}", jobId, condition);
     }
 

@@ -97,7 +97,8 @@ public class ComposeService {
         UserMedia media = userMediaRepository.save(UserMedia.of(job.getUser(), resultKey,
                 thumbnailKey, DisplayNames.resolve(null, resultKey, LocalDateTime.now(clock))));
         job.complete(resultKey, media.getId());
-        // 원본은 성공 시 삭제 — 결과만 보관함에 남는다 (decisions.md 네컷 합성 결정)
+        // 원본은 성공 시 삭제 — 결과만 보관함에 남는다.
+        // 원본은 합성 재료일 뿐 사용자의 보관 대상이 아니라 저장 비용만 먹는다
         s3Deleter.deleteAfterCommit(job.sourceKeys());
     }
 
