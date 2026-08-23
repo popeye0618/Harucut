@@ -145,11 +145,19 @@ public class ComposeService {
         return S3Keys.userRoot(publicId) + "fourcuts/job-" + jobId + "-thumb.jpg";
     }
 
-    // 남의 원본으로 합성 못 한다 — 프로필 이미지와 같은 규칙: 정규화된 key의 내 prefix 검사, 403
+    // 남의 원본으로 합성 못 한다 — 정규화된 key의 내 prefix 검사, 403.
+    //
+    // 내 폴더인 것만으로는 부족하다: 같은 prefix 아래에 profile/·frames/·components/가 함께 살고,
+    // 합성에 성공하면 여기 실린 key가 전부 삭제된다(completeJob). 사용자가 자기 스티커 key를
+    // 원본 자리에 넣으면 그 스티커가 지워지고, 그걸 쓰는 프레임의 이후 합성이 전부 실패한다.
+    // 발급 경로(FourcutSourceUploadPathStrategy)가 이미 이 폴더만 내주므로 정상 요청은 안 막힌다
+    private static final String SOURCE_FOLDER = "fourcuts/sources/";
+
     private void validateSourceOwnership(String publicId, List<String> sourceKeys) {
-        String root = S3Keys.userRoot(publicId);
+        String sourceRoot = S3Keys.userRoot(publicId) + SOURCE_FOLDER;
         for (String sourceKey : sourceKeys) {
-            if (!sourceKey.startsWith(root)) {
+            S3Keys.assertOwnedBy(sourceKey, publicId);
+            if (!sourceKey.startsWith(sourceRoot)) {
                 throw new BusinessException(GlobalErrorCode.FORBIDDEN);
             }
         }

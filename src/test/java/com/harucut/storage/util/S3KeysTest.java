@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @DisplayName("S3Keys")
@@ -142,6 +143,75 @@ class S3KeysTest {
             assertThat(S3Keys.isManagedKey("https://cdn.example.com/x.png")).isFalse();
             assertThat(S3Keys.isManagedKey("static/stickers/heart.png")).isFalse();
             assertThat(S3Keys.isManagedKey(null)).isFalse();
+        }
+    }
+
+    @Nested
+    @DisplayName("assertOwnedBy")
+    class AssertOwnedBy {
+
+        private static final String OWNER = "AbCdEf12Gh";
+        private static final String OTHER = "ZzZzZzZzZz";
+
+        @Test
+        @DisplayName("내 폴더의 key는 통과한다")
+        void ownKeyPasses() {
+            assertThatCode(() -> S3Keys.assertOwnedBy(KEY, OWNER)).doesNotThrowAnyException();
+        }
+
+        @Test
+        @DisplayName("남의 폴더의 key는 403이다")
+        void otherUsersKeyIsForbidden() {
+            String othersKey = S3Keys.userRoot(OTHER) + "fourcuts/job-1.png";
+
+            assertThatThrownBy(() -> S3Keys.assertOwnedBy(othersKey, OWNER))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", GlobalErrorCode.FORBIDDEN);
+        }
+
+        @Test
+        @DisplayName("URL로 감싸도 정규화된 key로 검사하므로 우회되지 않는다")
+        void urlWrappedOtherKeyIsForbidden() {
+            String wrapped = "https://harucut-test.s3.amazonaws.com/"
+                    + S3Keys.userRoot(OTHER) + "profile/a.png";
+
+            assertThatThrownBy(() -> S3Keys.assertOwnedBy(wrapped, OWNER))
+                    .isInstanceOf(BusinessException.class);
+        }
+
+        @Test
+        @DisplayName("경로 조작(.. · // · 역슬래시)은 내 폴더로 시작해도 막는다")
+        void traversalIsForbidden() {
+            assertThatThrownBy(() -> S3Keys.assertOwnedBy(
+                    S3Keys.userRoot(OWNER) + "../" + OTHER + "/profile/a.png", OWNER))
+                    .isInstanceOf(BusinessException.class);
+            assertThatThrownBy(() -> S3Keys.assertOwnedBy(
+                    S3Keys.userRoot(OWNER) + "profile//a.png", OWNER))
+                    .isInstanceOf(BusinessException.class);
+            assertThatThrownBy(() -> S3Keys.assertOwnedBy(
+                    S3Keys.userRoot(OWNER) + "profile\\a.png", OWNER))
+                    .isInstanceOf(BusinessException.class);
+        }
+
+        @Test
+        @DisplayName("우리 파일이 아닌 값은 소유권을 따지지 않는다 — 정적 경로·외부 URL·텍스트 본문")
+        void unmanagedValuesPass() {
+            assertThatCode(() -> {
+                S3Keys.assertOwnedBy("/static/stickers/heart.png", OWNER);
+                S3Keys.assertOwnedBy("https://cdn.example.com/heart.png", OWNER);
+                S3Keys.assertOwnedBy("봄 여행 4컷", OWNER);
+                S3Keys.assertOwnedBy(null, OWNER);
+                S3Keys.assertOwnedBy("  ", OWNER);
+            }).doesNotThrowAnyException();
+        }
+
+        @Test
+        @DisplayName("publicId가 다른 사용자의 접두사여도 폴더 경계에서 갈린다")
+        void prefixCollisionIsNotPossible() {
+            // userRoot 가 끝에 /를 붙이므로 "Ab"와 "AbCdEf12Gh"가 섞이지 않는다
+            assertThatThrownBy(() -> S3Keys.assertOwnedBy(
+                    "uploads/users/AbCdEf12GhXX/profile/a.png", OWNER))
+                    .isInstanceOf(BusinessException.class);
         }
     }
 }
