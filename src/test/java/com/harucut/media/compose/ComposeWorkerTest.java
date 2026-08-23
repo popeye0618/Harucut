@@ -3,6 +3,7 @@ package com.harucut.media.compose;
 import com.harucut.frame.attributes.BackgroundAttributes;
 import com.harucut.frame.enums.FrameType;
 import com.harucut.media.service.ComposeService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -14,6 +15,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.Duration;
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -44,10 +46,15 @@ class ComposeWorkerTest {
     private ComposeService composeService;
 
     private ComposeWorker worker;
+    private SimpleMeterRegistry registry;
 
     @BeforeEach
     void setUp() {
-        worker = new ComposeWorker(composeExecutor, composeService, STALE_AFTER);
+        // 지표는 목이 아니라 진짜다 — SimpleMeterRegistry 는 의존성 없이 값을 그대로 들고 있어서
+        // "접수가 실제로 세어졌는가"를 확인할 수 있다
+        registry = new SimpleMeterRegistry();
+        worker = new ComposeWorker(composeExecutor, composeService,
+                new ComposeMetrics(registry), STALE_AFTER);
     }
 
     @Test
@@ -103,6 +110,29 @@ class ComposeWorkerTest {
         InOrder order = inOrder(composeExecutor, composeService);
         order.verify(composeService).claim(JOB_ID, STALE_AFTER);
         order.verify(composeExecutor).execute(event());
+    }
+
+    // 지표가 있었다면 이번 사고(즉시 접수가 통째로 죽음)를 첫날 봤다.
+    // dispatch{result="claimed"} 가 0 이고 skipped 만 오르는 것이 그 신호다
+    @Test
+    @DisplayName("접수 성공·건너뜀·실패가 각각 세어진다 — 이 지표가 조기 경보다")
+    void countsEachDispatchOutcome() {
+        given(composeService.claim(JOB_ID, STALE_AFTER)).willReturn(true, false, true);
+        willThrow(new IllegalStateException("접수 실패"))
+                .given(composeExecutor).execute(any());
+
+        worker.handle(event());   // claim true  -> executor 예외 -> failed
+        worker.handle(event());   // claim false -> skipped
+
+        assertThat(counter("harucut.compose.dispatch", "result", "failed")).isEqualTo(1);
+        assertThat(counter("harucut.compose.dispatch", "result", "skipped")).isEqualTo(1);
+        assertThat(counter("harucut.compose.dispatch", "result", "claimed"))
+                .as("한 번도 안 오른 카운터도 0으로 보여야 한다 — 그래야 '0건'과 '미계측'이 구분된다")
+                .isZero();
+    }
+
+    private double counter(String name, String tagKey, String tagValue) {
+        return registry.get(name).tag(tagKey, tagValue).counter().count();
     }
 
     private static ComposeRequestedEvent event() {

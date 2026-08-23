@@ -21,7 +21,8 @@ import static org.mockito.BDDMockito.then;
 @DisplayName("FrameAssetManager")
 class FrameAssetManagerTest {
 
-    private static final String KEY = "uploads/users/AbCdEf12Gh/components/photo1.png";
+    private static final String OWNER = "AbCdEf12Gh";
+    private static final String KEY = "uploads/users/" + OWNER + "/components/photo1.png";
     private static final String MANAGED_URL =
             "https://harucut-test.s3.ap-northeast-2.amazonaws.com/" + KEY + "?X-Amz-Signature=abc";
     private static final String EXTERNAL_URL = "https://cdn.example.com/stickers/heart.png";
@@ -47,13 +48,13 @@ class FrameAssetManagerTest {
         @Test
         @DisplayName("PHOTO의 presigned URL은 순수 key로 정규화된다")
         void photoUrlBecomesKey() {
-            assertThat(assetManager.normalizeSource(ComponentType.PHOTO, MANAGED_URL)).isEqualTo(KEY);
+            assertThat(assetManager.normalizeSource(ComponentType.PHOTO, MANAGED_URL, OWNER)).isEqualTo(KEY);
         }
 
         @Test
         @DisplayName("PHOTO여도 외부 URL은 건드리지 않는다")
         void photoExternalUrlUntouched() {
-            assertThat(assetManager.normalizeSource(ComponentType.PHOTO, EXTERNAL_URL))
+            assertThat(assetManager.normalizeSource(ComponentType.PHOTO, EXTERNAL_URL, OWNER))
                     .isEqualTo(EXTERNAL_URL);
         }
 
@@ -61,7 +62,7 @@ class FrameAssetManagerTest {
         @DisplayName("STICKER는 정적 자산 경로라 앞 슬래시까지 그대로 보존된다")
         void stickerUntouched() {
             // PHOTO였다면 앞 슬래시가 떼졌을 입력 — 타입 분기가 실제로 보호하는 것을 고정
-            assertThat(assetManager.normalizeSource(ComponentType.STICKER, "/static/stickers/heart.png"))
+            assertThat(assetManager.normalizeSource(ComponentType.STICKER, "/static/stickers/heart.png", OWNER))
                     .isEqualTo("/static/stickers/heart.png");
         }
 
@@ -69,14 +70,14 @@ class FrameAssetManagerTest {
         @DisplayName("TEXT의 source는 본문 텍스트라 절대 손대지 않는다")
         void textUntouched() {
             // URI로 파싱하면 죽는 입력 — 파싱 자체를 안 한다는 증명
-            assertThat(assetManager.normalizeSource(ComponentType.TEXT, "봄 여행 🌸 4컷"))
+            assertThat(assetManager.normalizeSource(ComponentType.TEXT, "봄 여행 🌸 4컷", OWNER))
                     .isEqualTo("봄 여행 🌸 4컷");
         }
 
         @Test
         @DisplayName("배경·프리뷰용 normalizeImageKey도 URL을 key로 만든다")
         void imageKeyNormalized() {
-            assertThat(assetManager.normalizeImageKey(MANAGED_URL)).isEqualTo(KEY);
+            assertThat(assetManager.normalizeImageKey(MANAGED_URL, OWNER)).isEqualTo(KEY);
         }
     }
 

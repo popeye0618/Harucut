@@ -1,0 +1,100 @@
+# 개선 전/후를 실제로 측정하기 위한 스택.
+#
+# 이미 떠 있는 관측 스택(docker-compose.view.yml)의 네트워크에 붙는다.
+# Prometheus 가 app:8081 로 수집하므로 서비스 이름을 app 으로 둔다.
+#
+#   준비:  docker compose -f monitoring/docker-compose.view.yml up -d
+#   실행:  APP_IMAGE=harucut:after docker compose -f monitoring/docker-compose.measure.yml up -d
+#
+# 포트는 이 PC 에서 다른 프로젝트와 겹치지 않는 값으로 잡았다.
+# mysql 3306 은 비어 있고, redis 6379/6380 은 comatching 이 쓰고 있어 6381 로 옮겼다.
+name: harucut-measure
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: harucut-measure-mysql
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      TZ: Asia/Seoul
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - measure-mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: harucut-measure-redis
+    restart: unless-stopped
+    ports:
+      - "6381:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: harucut-measure-mailpit
+    restart: unless-stopped
+    ports:
+      - "1026:1025"
+      - "8026:8025"
+
+  app:
+    # harucut:before 와 harucut:after 를 이 변수로 바꿔 끼운다.
+    image: ${APP_IMAGE:-harucut:after}
+    container_name: harucut-measure-app
+    restart: "no"
+    stop_grace_period: 60s
+    env_file:
+      - ../.env
+    environment:
+      # load 프로파일은 ddl-auto 가 validate 다. 빈 DB 에서는 뜨지 않는다.
+      # 스키마를 만들 때는 SPRING_PROFILES=local 로 한 번 띄운 뒤 다시 local,load 로 올린다.
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES:-local,load}
+      # .env 의 값은 호스트 기준이라 컨테이너 안에서는 안 통한다. environment 가 env_file 을 덮는다.
+      DB_URL: "jdbc:mysql://mysql:3306/${MYSQL_DATABASE}?characterEncoding=UTF-8&serverTimezone=Asia/Seoul"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      MAIL_HOST: mailpit
+      MAIL_PORT: "1025"
+      INSTANCE_ID: ${RUN_LABEL:-run}
+      # 개선 전 이미지에서만 의미가 있다. 개선 후에는 스레드풀 자체가 없어 무시된다.
+      COMPOSE_POOL_CORE_SIZE: ${POOL_SIZE:-2}
+      COMPOSE_POOL_MAX_SIZE: ${POOL_SIZE:-2}
+      COMPOSE_POOL_QUEUE_CAPACITY: "100"
+    ports:
+      - "18080:8080"
+      # 관리 포트는 호스트로 열지 않는다. Prometheus 가 같은 네트워크에서 app:8081 로 닿는다.
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          # 재현 가능한 측정을 위해 고정한다. 루트 compose 의 부하 프로파일과 같은 값이다.
+          cpus: "2"
+          memory: 2g
+
+volumes:
+  measure-mysql-data:
+
+networks:
+  default:
+    # 관측 스택이 만들어 둔 네트워크에 그대로 붙는다.
+    name: harucut_default
+    external: true

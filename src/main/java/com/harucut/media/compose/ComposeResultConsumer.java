@@ -57,16 +57,19 @@ public class ComposeResultConsumer implements SmartLifecycle {
     private final SqsClient sqsClient;
     private final ObjectMapper objectMapper;
     private final ComposeService composeService;
+    private final ComposeMetrics metrics;
     private final String queueUrl;
 
     private volatile boolean running;
     private ExecutorService worker;
 
     public ComposeResultConsumer(SqsClient sqsClient, ObjectMapper objectMapper,
-                                 ComposeService composeService, AwsProperties awsProperties) {
+                                 ComposeService composeService, ComposeMetrics metrics,
+                                 AwsProperties awsProperties) {
         this.sqsClient = sqsClient;
         this.objectMapper = objectMapper;
         this.composeService = composeService;
+        this.metrics = metrics;
         if (awsProperties.sqs() == null || awsProperties.sqs().composeResultQueueUrl() == null
                 || awsProperties.sqs().composeResultQueueUrl().isBlank()) {
             // 소비자를 켰는데 큐가 없으면 기동에서 죽는다 — 통지를 조용히 흘리는 것보다 낫다
@@ -165,6 +168,7 @@ public class ComposeResultConsumer implements SmartLifecycle {
         if (jobId == null) {
             // jobId 없는 payload = 이 전환 이전 서버가 보낸 것. 그쪽은 동기 호출이라
             // 자기가 결과를 기록했다 — 여기서 할 일이 없다
+            metrics.notifiedWithoutJobId();
             log.warn("[합성 통지] jobId 없는 통지 — 건너뛴다: condition={}", notification.condition());
             return;
         }
@@ -173,6 +177,7 @@ public class ComposeResultConsumer implements SmartLifecycle {
         if ("Success".equals(condition)) {
             ComposeLambdaPayload payload = notification.requestPayload();
             composeService.completeJob(jobId, payload.resultKey(), payload.thumbnailKey());
+            metrics.notifiedDone();
             log.info("[합성 통지] 완료: jobId={}", jobId);
             return;
         }
@@ -180,6 +185,7 @@ public class ComposeResultConsumer implements SmartLifecycle {
         if ("RetriesExhausted".equals(condition)) {
             // 함수가 최초 1회 + 재시도 2회를 모두 예외로 끝냈다 — 영구 실패로 본다
             composeService.failJob(jobId, notification.failureReason());
+            metrics.notifiedFailed();
             log.warn("[합성 통지] 영구 실패: jobId={} reason={}", jobId, notification.failureReason());
             return;
         }
@@ -187,7 +193,9 @@ public class ComposeResultConsumer implements SmartLifecycle {
         // EventAgeExceeded · ZeroReservedConcurrency, 그리고 앞으로 AWS가 추가할 값들.
         // 전부 "일시적"으로 본다 — PENDING 그대로 두면 ComposeRerunScheduler가 다시 던진다.
         // 여기서 failJob을 부르면 재시도 가능한 실패가 영구 손실이 된다
-        // (2026-08-21 측정에서 429가 정확히 그렇게 죽었다. decisions.md 참고)
+        // (2026-08-21 측정에서 429가 정확히 그렇게 죽었다.
+        //  docs/adr-0001-compose-result-channel.md 참고)
+        metrics.notifiedTransient();
         log.warn("[합성 통지] 일시적 실패로 본다 — PENDING 유지: jobId={} condition={}", jobId, condition);
     }
 

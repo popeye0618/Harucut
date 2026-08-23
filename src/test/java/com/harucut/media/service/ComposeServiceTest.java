@@ -6,6 +6,7 @@ import com.harucut.frame.attributes.BackgroundAttributes;
 import com.harucut.frame.entity.Frame;
 import com.harucut.frame.enums.FrameType;
 import com.harucut.frame.service.FrameService;
+import com.harucut.media.compose.ComposeMetrics;
 import com.harucut.media.compose.ComposeRequestedEvent;
 import com.harucut.media.compose.ComposeSpec;
 import com.harucut.media.compose.ComposeSpecAssembler;
@@ -19,6 +20,7 @@ import com.harucut.media.repository.UserMediaRepository;
 import com.harucut.storage.service.S3Deleter;
 import com.harucut.user.entity.User;
 import com.harucut.user.repository.UserRepository;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -91,7 +93,7 @@ class ComposeServiceTest {
         Clock fixed = Clock.fixed(Instant.parse("2026-07-20T10:00:00Z"), ZoneOffset.UTC);
         composeService = new ComposeService(userRepository, composeJobRepository,
                 userMediaRepository, frameService, composeSpecAssembler, s3Deleter,
-                eventPublisher, fixed);
+                eventPublisher, new ComposeMetrics(new SimpleMeterRegistry()), fixed);
         user = User.localUser("owner@harucut.com", "encoded", "소유자");
         ReflectionTestUtils.setField(user, "id", 1L);
     }
@@ -188,6 +190,28 @@ class ComposeServiceTest {
 
             then(composeJobRepository).should(org.mockito.Mockito.never()).save(any());
             then(eventPublisher).shouldHaveNoInteractions();
+        }
+
+        // 합성에 성공하면 sourceKeys 가 전부 삭제된다(completeJob). 내 폴더라는 것만 확인하면
+        // 사용자가 자기 프로필 사진·스티커 key 를 원본 자리에 넣어 자기 자산을 지울 수 있다 —
+        // 그 스티커를 쓰는 프레임의 이후 합성이 전부 영구 실패한다
+        @Test
+        @DisplayName("내 key라도 원본 폴더 밖이면 403이다 — 자기 자산 자폭 차단")
+        void ownKeyOutsideSourceFolderForbidden() {
+            givenUser();
+            given(composeJobRepository.findByUserAndIdempotencyKey(user, IDEM_KEY))
+                    .willReturn(Optional.empty());
+            List<String> myOtherFolderKeys = List.of(
+                    "uploads/users/" + PUBLIC_ID + "/components/sticker.png",
+                    SOURCE_KEYS.get(1), SOURCE_KEYS.get(2), SOURCE_KEYS.get(3));
+
+            assertThatThrownBy(() ->
+                    composeService.requestCompose(PUBLIC_ID, request(myOtherFolderKeys)))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting("errorCode")
+                    .isEqualTo(GlobalErrorCode.FORBIDDEN);
+
+            then(composeJobRepository).should(org.mockito.Mockito.never()).save(any());
         }
 
         @Test

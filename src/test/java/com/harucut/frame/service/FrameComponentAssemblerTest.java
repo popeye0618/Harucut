@@ -33,6 +33,7 @@ import static org.mockito.Mockito.never;
 @DisplayName("FrameComponentAssembler")
 class FrameComponentAssemblerTest {
 
+    private static final String OWNER = "AbCdEf12Gh";
     private static final String PHOTO_URL =
             "https://harucut-test.s3.amazonaws.com/uploads/users/AbCdEf12Gh/components/photo1.png";
     private static final String PHOTO_KEY = "uploads/users/AbCdEf12Gh/components/photo1.png";
@@ -59,19 +60,19 @@ class FrameComponentAssemblerTest {
         @Test
         @DisplayName("컴포넌트 목록이 null이면 빈 리스트다")
         void nullBecomesEmptyList() {
-            assertThat(assembler.createComponents(null)).isEmpty();
+            assertThat(assembler.createComponents(null, OWNER)).isEmpty();
             then(frameAssetManager).shouldHaveNoInteractions();
         }
 
         @Test
         @DisplayName("PHOTO source는 정규화된 key로 저장되고 나머지 필드는 그대로 옮겨진다")
         void mapsFieldsAndNormalizesSource() {
-            given(frameAssetManager.normalizeSource(ComponentType.PHOTO, PHOTO_URL)).willReturn(PHOTO_KEY);
+            given(frameAssetManager.normalizeSource(eq(ComponentType.PHOTO), eq(PHOTO_URL), any())).willReturn(PHOTO_KEY);
             FrameCreateRequest.ComponentRequest request = new FrameCreateRequest.ComponentRequest(
                     "comp-1", ComponentType.PHOTO, PHOTO_URL, null,
                     120.5, 220.0, 360.0, 480.0, 1.5, 45.0, 3, Map.of("borderRadius", 8));
 
-            List<FrameComponent> components = assembler.createComponents(List.of(request));
+            List<FrameComponent> components = assembler.createComponents(List.of(request), OWNER);
 
             FrameComponent component = components.get(0);
             assertThat(component.getSource()).isEqualTo(PHOTO_KEY);
@@ -89,12 +90,12 @@ class FrameComponentAssemblerTest {
         @Test
         @DisplayName("styleJson이 null이어도 엔티티의 style은 빈 맵이다")
         void nullStyleBecomesEmptyMap() {
-            given(frameAssetManager.normalizeSource(ComponentType.TEXT, "봄 여행")).willReturn("봄 여행");
+            given(frameAssetManager.normalizeSource(eq(ComponentType.TEXT), eq("봄 여행"), any())).willReturn("봄 여행");
             FrameCreateRequest.ComponentRequest request = new FrameCreateRequest.ComponentRequest(
                     null, ComponentType.TEXT, "봄 여행", null,
                     0.0, 0.0, null, null, null, 0.0, 0, null);
 
-            List<FrameComponent> components = assembler.createComponents(List.of(request));
+            List<FrameComponent> components = assembler.createComponents(List.of(request), OWNER);
 
             assertThat(components.get(0).getStyle()).isNotNull().isEmpty();
         }
@@ -102,12 +103,12 @@ class FrameComponentAssemblerTest {
         @Test
         @DisplayName("TEXT의 renderedKey는 URL로 와도 정규화된 key로 저장된다")
         void textRenderedKeyNormalized() {
-            given(frameAssetManager.normalizeSource(ComponentType.TEXT, "봄 여행")).willReturn("봄 여행");
-            given(frameAssetManager.normalizeImageKey(RENDERED_URL)).willReturn(RENDERED_KEY);
+            given(frameAssetManager.normalizeSource(eq(ComponentType.TEXT), eq("봄 여행"), any())).willReturn("봄 여행");
+            given(frameAssetManager.normalizeImageKey(eq(RENDERED_URL), any())).willReturn(RENDERED_KEY);
             FrameCreateRequest.ComponentRequest request =
                     componentRequest(ComponentType.TEXT, "봄 여행", RENDERED_URL);
 
-            List<FrameComponent> components = assembler.createComponents(List.of(request));
+            List<FrameComponent> components = assembler.createComponents(List.of(request), OWNER);
 
             assertThat(components.get(0).getRenderedKey()).isEqualTo(RENDERED_KEY);
         }
@@ -115,24 +116,24 @@ class FrameComponentAssemblerTest {
         @Test
         @DisplayName("PHOTO가 renderedKey를 보내면 버린다 — TEXT 전용 필드다")
         void photoRenderedKeyDiscarded() {
-            given(frameAssetManager.normalizeSource(ComponentType.PHOTO, PHOTO_URL)).willReturn(PHOTO_KEY);
+            given(frameAssetManager.normalizeSource(eq(ComponentType.PHOTO), eq(PHOTO_URL), any())).willReturn(PHOTO_KEY);
             FrameCreateRequest.ComponentRequest request =
                     componentRequest(ComponentType.PHOTO, PHOTO_URL, RENDERED_URL);
 
-            List<FrameComponent> components = assembler.createComponents(List.of(request));
+            List<FrameComponent> components = assembler.createComponents(List.of(request), OWNER);
 
             assertThat(components.get(0).getRenderedKey()).isNull();
-            then(frameAssetManager).should(never()).normalizeImageKey(anyString());
+            then(frameAssetManager).should(never()).normalizeImageKey(anyString(), any());
         }
 
         @Test
         @DisplayName("TEXT라도 renderedKey가 빈 값이면 null로 저장된다 — 선택 필드")
         void blankRenderedKeyBecomesNull() {
-            given(frameAssetManager.normalizeSource(ComponentType.TEXT, "봄 여행")).willReturn("봄 여행");
+            given(frameAssetManager.normalizeSource(eq(ComponentType.TEXT), eq("봄 여행"), any())).willReturn("봄 여행");
             FrameCreateRequest.ComponentRequest request =
                     componentRequest(ComponentType.TEXT, "봄 여행", "  ");
 
-            List<FrameComponent> components = assembler.createComponents(List.of(request));
+            List<FrameComponent> components = assembler.createComponents(List.of(request), OWNER);
 
             assertThat(components.get(0).getRenderedKey()).isNull();
         }
@@ -163,11 +164,11 @@ class FrameComponentAssemblerTest {
         @Test
         @DisplayName("IMAGE 배경의 key가 정규화되고 url 흔적은 비워진다")
         void normalizesImageKeyAndStripsUrl() {
-            given(frameAssetManager.normalizeImageKey(PHOTO_URL)).willReturn(BG_KEY);
+            given(frameAssetManager.normalizeImageKey(eq(PHOTO_URL), any())).willReturn(BG_KEY);
             BackgroundAttributes.Image withUrl =
                     new BackgroundAttributes.Image(PHOTO_URL, 0.8, null).withUrl("https://presigned");
 
-            BackgroundAttributes normalized = assembler.normalizeBackground(withUrl);
+            BackgroundAttributes normalized = assembler.normalizeBackground(withUrl, OWNER);
 
             assertThat(normalized).isEqualTo(new BackgroundAttributes.Image(BG_KEY, 0.8, null));
         }
@@ -177,7 +178,7 @@ class FrameComponentAssemblerTest {
         void colorPassesThrough() {
             BackgroundAttributes color = new BackgroundAttributes.Color("#FFE4E1");
 
-            assertThat(assembler.normalizeBackground(color)).isSameAs(color);
+            assertThat(assembler.normalizeBackground(color, OWNER)).isSameAs(color);
             then(frameAssetManager).shouldHaveNoInteractions();
         }
 
@@ -287,7 +288,7 @@ class FrameComponentAssemblerTest {
         @DisplayName("소유 프레임은 소유자를 갖고 프리뷰·배경이 정규화되어 조립된다")
         void assemblesOwnedFrame() {
             User user = User.localUser("user@harucut.com", "encoded", "하루컷");
-            given(frameAssetManager.normalizeImageKey("preview-url")).willReturn(PREVIEW_KEY);
+            given(frameAssetManager.normalizeImageKey(eq("preview-url"), any())).willReturn(PREVIEW_KEY);
             FrameCreateRequest request = new FrameCreateRequest("제목", null, "preview-url",
                     FrameType.CLASSIC, null, null, new BackgroundAttributes.Color("#FFF"),
                     List.of(true, false, false, true), null);
@@ -305,8 +306,8 @@ class FrameComponentAssemblerTest {
         @Test
         @DisplayName("시스템 프레임은 소유자 없이 조립되고 컴포넌트 source도 정규화된다")
         void assemblesSystemFrame() {
-            given(frameAssetManager.normalizeImageKey("preview-url")).willReturn(PREVIEW_KEY);
-            given(frameAssetManager.normalizeSource(ComponentType.PHOTO, PHOTO_URL)).willReturn(PHOTO_KEY);
+            given(frameAssetManager.normalizeImageKey(eq("preview-url"), any())).willReturn(PREVIEW_KEY);
+            given(frameAssetManager.normalizeSource(eq(ComponentType.PHOTO), eq(PHOTO_URL), any())).willReturn(PHOTO_KEY);
             FrameCreateRequest request = new FrameCreateRequest("기본", "설명", "preview-url",
                     FrameType.CLASSIC, null, null, new BackgroundAttributes.Color("#FFF"), null,
                     List.of(componentRequest(ComponentType.PHOTO, PHOTO_URL)));
@@ -336,11 +337,11 @@ class FrameComponentAssemblerTest {
                     new BackgroundAttributes.Image("new-bg-url", 0.5, null), null,
                     List.of(componentRequest(ComponentType.PHOTO, "uploads/kept.png"),
                             componentRequest(ComponentType.PHOTO, "uploads/new1.png")));
-            given(frameAssetManager.normalizeImageKey("new-bg-url")).willReturn("uploads/new-bg.png");
-            given(frameAssetManager.normalizeImageKey("new-preview-url")).willReturn("uploads/new-preview.png");
-            given(frameAssetManager.normalizeSource(ComponentType.PHOTO, "uploads/kept.png"))
+            given(frameAssetManager.normalizeImageKey(eq("new-bg-url"), any())).willReturn("uploads/new-bg.png");
+            given(frameAssetManager.normalizeImageKey(eq("new-preview-url"), any())).willReturn("uploads/new-preview.png");
+            given(frameAssetManager.normalizeSource(eq(ComponentType.PHOTO), eq("uploads/kept.png"), any()))
                     .willReturn("uploads/kept.png");
-            given(frameAssetManager.normalizeSource(ComponentType.PHOTO, "uploads/new1.png"))
+            given(frameAssetManager.normalizeSource(eq(ComponentType.PHOTO), eq("uploads/new1.png"), any()))
                     .willReturn("uploads/new1.png");
 
             assembler.replaceContent(frame, request);
@@ -367,12 +368,12 @@ class FrameComponentAssemblerTest {
                     FrameType.CLASSIC, null, null, new BackgroundAttributes.Color("#FFE4E1"), null,
                     List.of(componentRequest(ComponentType.TEXT, "봄", "uploads/text-new.png"),
                             componentRequest(ComponentType.TEXT, "여름", "uploads/text-kept.png")));
-            given(frameAssetManager.normalizeImageKey(PREVIEW_KEY)).willReturn(PREVIEW_KEY);
-            given(frameAssetManager.normalizeSource(eq(ComponentType.TEXT), anyString()))
+            given(frameAssetManager.normalizeImageKey(eq(PREVIEW_KEY), any())).willReturn(PREVIEW_KEY);
+            given(frameAssetManager.normalizeSource(eq(ComponentType.TEXT), anyString(), any()))
                     .willAnswer(invocation -> invocation.getArgument(1));
-            given(frameAssetManager.normalizeImageKey("uploads/text-new.png"))
+            given(frameAssetManager.normalizeImageKey(eq("uploads/text-new.png"), any()))
                     .willReturn("uploads/text-new.png");
-            given(frameAssetManager.normalizeImageKey("uploads/text-kept.png"))
+            given(frameAssetManager.normalizeImageKey(eq("uploads/text-kept.png"), any()))
                     .willReturn("uploads/text-kept.png");
 
             assembler.replaceContent(frame, request);
@@ -392,9 +393,9 @@ class FrameComponentAssemblerTest {
                     FrameType.CLASSIC, null, null,
                     new BackgroundAttributes.Image("uploads/bg.png", 0.8, null), null,
                     List.of(componentRequest(ComponentType.PHOTO, "uploads/kept.png")));
-            given(frameAssetManager.normalizeImageKey("uploads/bg.png")).willReturn("uploads/bg.png");
-            given(frameAssetManager.normalizeImageKey("uploads/preview.png")).willReturn("uploads/preview.png");
-            given(frameAssetManager.normalizeSource(ComponentType.PHOTO, "uploads/kept.png"))
+            given(frameAssetManager.normalizeImageKey(eq("uploads/bg.png"), any())).willReturn("uploads/bg.png");
+            given(frameAssetManager.normalizeImageKey(eq("uploads/preview.png"), any())).willReturn("uploads/preview.png");
+            given(frameAssetManager.normalizeSource(eq(ComponentType.PHOTO), eq("uploads/kept.png"), any()))
                     .willReturn("uploads/kept.png");
 
             assembler.replaceContent(frame, request);
@@ -413,7 +414,7 @@ class FrameComponentAssemblerTest {
             FrameCreateRequest request = new FrameCreateRequest("제목", null, PREVIEW_KEY,
                     FrameType.CLASSIC, null, null, new BackgroundAttributes.Color("#FFE4E1"),
                     List.of(false, true, true, false), null);
-            given(frameAssetManager.normalizeImageKey(PREVIEW_KEY)).willReturn(PREVIEW_KEY);
+            given(frameAssetManager.normalizeImageKey(eq(PREVIEW_KEY), any())).willReturn(PREVIEW_KEY);
 
             assembler.replaceContent(frame, request);
 

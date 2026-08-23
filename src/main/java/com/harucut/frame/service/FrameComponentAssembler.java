@@ -24,19 +24,20 @@ public class FrameComponentAssembler {
     private final FrameAssetManager frameAssetManager;
 
     // 요청 → 엔티티. 저장 직전에 순수 key로 정규화된다 — PHOTO의 source, TEXT의 renderedKey
-    public List<FrameComponent> createComponents(List<FrameCreateRequest.ComponentRequest> requests) {
+    public List<FrameComponent> createComponents(List<FrameCreateRequest.ComponentRequest> requests,
+                                                 String ownerPublicId) {
         if (requests == null) {
             return List.of();
         }
         return requests.stream()
                 .map(dto -> FrameComponent.builder()
-                        .source(frameAssetManager.normalizeSource(dto.type(), dto.source()))
+                        .source(frameAssetManager.normalizeSource(dto.type(), dto.source(), ownerPublicId))
                         .type(dto.type())
                         .x(dto.x()).y(dto.y())
                         .width(dto.width()).height(dto.height()).scale(dto.scale())
                         .rotation(dto.rotation())
                         .zIndex(dto.zIndex())
-                        .renderedKey(renderedKeyFor(dto))
+                        .renderedKey(renderedKeyFor(dto, ownerPublicId))
                         .style(dto.styleJson())
                         .build())
                 .toList();
@@ -44,12 +45,12 @@ public class FrameComponentAssembler {
 
     // 구운 텍스트 key는 TEXT에만 의미가 있다 — 다른 타입이 보내면 버려서 쓰레기 저장을 막는다.
     // TEXT라도 선택 값: 없으면 null로 두고, 있어야 하는지는 합성 API가 검증한다
-    private String renderedKeyFor(FrameCreateRequest.ComponentRequest dto) {
+    private String renderedKeyFor(FrameCreateRequest.ComponentRequest dto, String ownerPublicId) {
         if (dto.type() != ComponentType.TEXT
                 || dto.renderedKey() == null || dto.renderedKey().isBlank()) {
             return null;
         }
-        return frameAssetManager.normalizeImageKey(dto.renderedKey());
+        return frameAssetManager.normalizeImageKey(dto.renderedKey(), ownerPublicId);
     }
 
     // 수정/삭제 시 S3 삭제 후보 수집 — 컴포넌트에서 우리 버킷 소유는
@@ -68,10 +69,12 @@ public class FrameComponentAssembler {
     }
 
     // 저장 직전 배경 정규화 — IMAGE key의 URL 흔적을 지우고, 응답 전용 url은 확실히 비운다
-    public BackgroundAttributes normalizeBackground(BackgroundAttributes background) {
+    public BackgroundAttributes normalizeBackground(BackgroundAttributes background,
+                                                    String ownerPublicId) {
         return switch (background) {
             case BackgroundAttributes.Image image -> new BackgroundAttributes.Image(
-                    frameAssetManager.normalizeImageKey(image.key()), image.opacity(), null);
+                    frameAssetManager.normalizeImageKey(image.key(), ownerPublicId),
+                    image.opacity(), null);
             case BackgroundAttributes.Color color -> color;
         };
     }
@@ -87,20 +90,22 @@ public class FrameComponentAssembler {
     // ── 생성 조립 — "DB에 URL을 저장하지 않는다"는 정규화 규칙을 서비스가 아니라 여기서 강제한다 ──
 
     public Frame assembleOwned(User user, FrameCreateRequest request) {
+        String owner = user.getPublicId();
         Frame frame = Frame.owned(user, request.title(), request.descriptionOrEmpty(),
-                frameAssetManager.normalizeImageKey(request.previewKey()),
-                request.frameType(), normalizeBackground(request.background()),
+                frameAssetManager.normalizeImageKey(request.previewKey(), owner),
+                request.frameType(), normalizeBackground(request.background(), owner),
                 request.cellCutouts());
-        createComponents(request.components()).forEach(frame::addComponent);
+        createComponents(request.components(), owner).forEach(frame::addComponent);
         return frame;
     }
 
+    // 시스템 프레임은 소유자가 없다 — 소유권 검사를 건너뛴다(ROLE_ADMIN이 신뢰 경계다)
     public Frame assembleSystem(FrameCreateRequest request) {
         Frame frame = Frame.system(request.title(), request.descriptionOrEmpty(),
-                frameAssetManager.normalizeImageKey(request.previewKey()),
-                request.frameType(), normalizeBackground(request.background()),
+                frameAssetManager.normalizeImageKey(request.previewKey(), null),
+                request.frameType(), normalizeBackground(request.background(), null),
                 request.cellCutouts());
-        createComponents(request.components()).forEach(frame::addComponent);
+        createComponents(request.components(), null).forEach(frame::addComponent);
         return frame;
     }
 
@@ -111,13 +116,17 @@ public class FrameComponentAssembler {
         String oldPreviewKey = frame.getPreviewKey();
         List<String> oldAssetKeys = extractAssetKeys(frame.getComponents());
 
-        BackgroundAttributes newBackground = normalizeBackground(request.background());
-        String newPreviewKey = frameAssetManager.normalizeImageKey(request.previewKey());
+        // 수정 대상이 누구 프레임인지는 엔티티가 안다 — 사용자 프레임이면 그 소유자,
+        // 시스템 프레임(user=null)이면 검사 없음. 관리자/사용자 서비스가 각각 정답을 넘기지
+        // 않아도 되므로 한쪽만 빠뜨리는 사고가 생기지 않는다
+        String owner = frame.getUser() == null ? null : frame.getUser().getPublicId();
+        BackgroundAttributes newBackground = normalizeBackground(request.background(), owner);
+        String newPreviewKey = frameAssetManager.normalizeImageKey(request.previewKey(), owner);
         frame.updateMetadata(request.title(), request.descriptionOrEmpty(), newBackground,
                 newPreviewKey, request.cellCutouts());
 
         frame.clearComponents();
-        List<FrameComponent> newComponents = createComponents(request.components());
+        List<FrameComponent> newComponents = createComponents(request.components(), owner);
         newComponents.forEach(frame::addComponent);
 
         // 교체로 참조를 잃은 key만 수집 — 계속 쓰이는 key를 지우면 멀쩡한 프레임이 깨진다.

@@ -49,7 +49,7 @@ public class ComposeHandler implements RequestStreamHandler {
                 .map(key -> download(payload.bucket(), key))
                 .toList();
 
-        // 자산 목록은 스펙이 소유한다 — 서버의 InProcessComposeExecutor와 같은 계산
+        // 자산 목록은 스펙이 소유한다 — 계산이 두 벌이면 서버와 어긋난다
         Map<String, byte[]> assets = new LinkedHashMap<>();
         for (String key : payload.spec().referencedAssetKeys()) {
             assets.put(key, download(payload.bucket(), key));

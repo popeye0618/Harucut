@@ -4,6 +4,7 @@ import com.harucut.common.exception.BusinessException;
 import com.harucut.common.exception.GlobalErrorCode;
 import com.harucut.frame.entity.Frame;
 import com.harucut.frame.service.FrameService;
+import com.harucut.media.compose.ComposeMetrics;
 import com.harucut.media.compose.ComposeRequestedEvent;
 import com.harucut.media.compose.ComposeSpec;
 import com.harucut.media.compose.ComposeSpecAssembler;
@@ -23,6 +24,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
@@ -43,6 +45,7 @@ public class ComposeService {
     private final ComposeSpecAssembler composeSpecAssembler;
     private final S3Deleter s3Deleter;
     private final ApplicationEventPublisher eventPublisher;
+    private final ComposeMetrics composeMetrics;
     private final Clock clock;
 
     public ComposeJobResponse requestCompose(String publicId, ComposeRequest request) {
@@ -53,6 +56,7 @@ public class ComposeService {
         Optional<ComposeJob> existing =
                 composeJobRepository.findByUserAndIdempotencyKey(user, request.idempotencyKey());
         if (existing.isPresent()) {
+            composeMetrics.requestReplayed();
             return ComposeJobResponse.from(existing.get());
         }
 
@@ -73,7 +77,15 @@ public class ComposeService {
         eventPublisher.publishEvent(new ComposeRequestedEvent(
                 job.getId(), spec, job.sourceKeys(),
                 resultKeyFor(publicId, job.getId()), thumbnailKeyFor(publicId, job.getId())));
+        composeMetrics.requestAccepted();
         return ComposeJobResponse.from(job);
+    }
+
+    // 게이지용. 재실행 배치가 30초마다 한 번만 부른다 — 스크레이프마다 세면
+    // 프로메테우스 주기가 DB 부하를 정하게 된다
+    @Transactional(readOnly = true)
+    public long countPending() {
+        return composeJobRepository.countByStatus(ComposeStatus.PENDING);
     }
 
     @Transactional(readOnly = true)
@@ -96,7 +108,8 @@ public class ComposeService {
         UserMedia media = userMediaRepository.save(UserMedia.of(job.getUser(), resultKey,
                 thumbnailKey, DisplayNames.resolve(null, resultKey, LocalDateTime.now(clock))));
         job.complete(resultKey, media.getId());
-        // 원본은 성공 시 삭제 — 결과만 보관함에 남는다 (decisions.md 네컷 합성 결정)
+        // 원본은 성공 시 삭제 — 결과만 보관함에 남는다.
+        // 원본은 합성 재료일 뿐 사용자의 보관 대상이 아니라 저장 비용만 먹는다
         s3Deleter.deleteAfterCommit(job.sourceKeys());
     }
 
@@ -104,6 +117,15 @@ public class ComposeService {
         composeJobRepository.findById(jobId).ifPresent(job -> job.fail(reason));
     }
 
+    // REQUIRES_NEW 가 필수다. 이 메서드의 호출자 중 하나가 AFTER_COMMIT 리스너(ComposeWorker)인데,
+    // 스프링은 그 단계를 afterCompletion(STATUS_COMMITTED) 에서 실행한다 — EntityManagerHolder 는
+    // 아직 스레드에 묶여 있고 transactionActive 도 true 라, REQUIRED 로 두면 "이미 커밋된" 트랜잭션에
+    // 참여해 버린다. Hibernate 는 커밋된 세션의 벌크 UPDATE 를 거부한다:
+    //     TransactionRequiredException: No active transaction for update or delete query
+    // 그 예외는 TransactionSynchronizationUtils 가 삼켜서 202 는 그대로 나가고 지표에도 안 잡힌다.
+    // 결과는 "즉시 접수가 통째로 죽고 모든 합성이 30초 재실행 배치로만 도는" 상태였다.
+    // 회귀 방지: ComposeClaimTransactionTest
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public boolean claim(Long jobId, Duration staleAfter) {
         LocalDateTime now = LocalDateTime.now(clock);
         return composeJobRepository.claim(jobId, now, now.minus(staleAfter)) == 1;
@@ -135,11 +157,19 @@ public class ComposeService {
         return S3Keys.userRoot(publicId) + "fourcuts/job-" + jobId + "-thumb.jpg";
     }
 
-    // 남의 원본으로 합성 못 한다 — 프로필 이미지와 같은 규칙: 정규화된 key의 내 prefix 검사, 403
+    // 남의 원본으로 합성 못 한다 — 정규화된 key의 내 prefix 검사, 403.
+    //
+    // 내 폴더인 것만으로는 부족하다: 같은 prefix 아래에 profile/·frames/·components/가 함께 살고,
+    // 합성에 성공하면 여기 실린 key가 전부 삭제된다(completeJob). 사용자가 자기 스티커 key를
+    // 원본 자리에 넣으면 그 스티커가 지워지고, 그걸 쓰는 프레임의 이후 합성이 전부 실패한다.
+    // 발급 경로(FourcutSourceUploadPathStrategy)가 이미 이 폴더만 내주므로 정상 요청은 안 막힌다
+    private static final String SOURCE_FOLDER = "fourcuts/sources/";
+
     private void validateSourceOwnership(String publicId, List<String> sourceKeys) {
-        String root = S3Keys.userRoot(publicId);
+        String sourceRoot = S3Keys.userRoot(publicId) + SOURCE_FOLDER;
         for (String sourceKey : sourceKeys) {
-            if (!sourceKey.startsWith(root)) {
+            S3Keys.assertOwnedBy(sourceKey, publicId);
+            if (!sourceKey.startsWith(sourceRoot)) {
                 throw new BusinessException(GlobalErrorCode.FORBIDDEN);
             }
         }

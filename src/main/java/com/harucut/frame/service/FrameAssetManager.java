@@ -19,17 +19,26 @@ public class FrameAssetManager {
     private final FileStorageService fileStorageService;
     private final S3Deleter s3Deleter;
 
-    // 저장 직전: PHOTO의 source만 순수 key로. presigned URL이 들어와도 key만 남긴다
-    public String normalizeSource(ComponentType type, String source) {
+    // 저장 직전: PHOTO의 source만 순수 key로. presigned URL이 들어와도 key만 남긴다.
+    //
+    // ownerPublicId는 "이 key가 누구 것이어야 하는가"다. null이면 검사를 건너뛴다 —
+    // 관리자가 만드는 시스템 프레임 전용이다(ROLE_ADMIN이 이미 신뢰 경계라 소유자 개념이 없다).
+    // 사용자 경로에서는 절대 null을 넘기지 말 것
+    public String normalizeSource(ComponentType type, String source, String ownerPublicId) {
         if (type != ComponentType.PHOTO) {
             return source;
         }
-        return S3Keys.normalizeManagedKey(source);
+        return normalizeImageKey(source, ownerPublicId);
     }
 
-    // 배경 IMAGE key와 previewKey용 — 항상 이미지 의미라 타입 인자가 필요 없다
-    public String normalizeImageKey(String pathOrKey) {
-        return S3Keys.normalizeManagedKey(pathOrKey);
+    // 배경 IMAGE key와 previewKey용 — 항상 이미지 의미라 타입 인자가 필요 없다.
+    // 검사를 정규화 뒤에 하는 순서가 중요하다: URL로 감싼 남의 key도 정규화하면 순수 key로 드러난다
+    public String normalizeImageKey(String pathOrKey, String ownerPublicId) {
+        String normalized = S3Keys.normalizeManagedKey(pathOrKey);
+        if (ownerPublicId != null) {
+            S3Keys.assertOwnedBy(normalized, ownerPublicId);
+        }
+        return normalized;
     }
 
     // 응답 조립: PHOTO이고 관리 대상이면 presigned GET URL, 아니면 원본 그대로

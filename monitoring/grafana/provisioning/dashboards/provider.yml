@@ -1,0 +1,16 @@
+# 이 폴더에 있는 대시보드 JSON 을 Grafana 가 자동으로 읽는다.
+# UI 에서 만든 대시보드는 컨테이너를 지우면 사라지지만, 여기 파일로 둔 것은 남는다.
+
+apiVersion: 1
+
+providers:
+  - name: harucut
+    type: file
+    # UI 에서 수정하면 파일과 어긋난다. 수정은 JSON 을 고쳐서 한다.
+    allowUiUpdates: false
+    # 파일을 지우면 Grafana 에서도 사라지게 한다.
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: false

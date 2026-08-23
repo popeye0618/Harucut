@@ -1,5 +1,6 @@
 package com.harucut.media.batch;
 
+import com.harucut.media.compose.ComposeMetrics;
 import com.harucut.media.compose.ComposeRequestedEvent;
 import com.harucut.media.compose.ComposeWorker;
 import com.harucut.media.service.ComposeService;
@@ -23,14 +24,17 @@ public class ComposeRerunScheduler {
 
     private final ComposeService composeService;
     private final ComposeWorker composeWorker;
+    private final ComposeMetrics metrics;
     private final Duration staleAfter;
     private final int batchSize;
 
     public ComposeRerunScheduler(ComposeService composeService, ComposeWorker composeWorker,
+                                 ComposeMetrics metrics,
                                  @Value("${compose.stale-after:10m}") Duration staleAfter,
                                  @Value("${compose.rerun.batch-size:20}") int batchSize) {
         this.composeService = composeService;
         this.composeWorker = composeWorker;
+        this.metrics = metrics;
         this.staleAfter = staleAfter;
         this.batchSize = batchSize;
     }
@@ -38,6 +42,14 @@ public class ComposeRerunScheduler {
     // fixedDelay: 이전 실행이 끝난 뒤부터 센다 — 한 주기가 길어져도 겹치지 않는다
     @Scheduled(fixedDelayString = "${compose.rerun.interval:30s}")
     public void run() {
+        // 적체 게이지를 여기서 갱신한다 — 이 배치가 이미 30초마다 도는 유일한 주기라
+        // 세는 주기를 새로 만들 필요가 없다. 조회가 실패해도 재실행은 계속돼야 한다
+        try {
+            metrics.recordPendingBacklog(composeService.countPending());
+        } catch (Exception e) {
+            log.warn("[합성 재실행] 적체 수 조회 실패 — 게이지만 낡는다", e);
+        }
+
         List<ComposeRequestedEvent> stalled = composeService.findStalled(staleAfter, batchSize);
 
         if (stalled.isEmpty()) {
@@ -47,6 +59,7 @@ public class ComposeRerunScheduler {
         // 접수가 수십 ms라 스케줄러 스레드에서 순서대로 밀어 넣는다 — 거부될 큐가 없다.
         // 접수 실패는 rerun 안에서 삼켜지고 Job은 PENDING으로 남아 다음 주기에 다시 걸린다
         stalled.forEach(composeWorker::rerun);
+        metrics.rerunSubmitted(stalled.size());
         log.info("[합성 재실행] {}건 재투입", stalled.size());
     }
 }
