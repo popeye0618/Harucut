@@ -18,9 +18,13 @@ import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
 import org.springframework.boot.test.autoconfigure.json.AutoConfigureJson;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.test.context.ActiveProfiles;
 import tools.jackson.databind.ObjectMapper;
 
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -196,6 +200,175 @@ class ComposeJobRepositoryTest {
 
             assertThat(composeJobRepository.findAll()).hasSize(1);
         }
+    }
+
+    // 이 두 쿼리가 "합성이 정확히 한 번 실행된다"의 전부다.
+    // 지금까지 어느 테스트에서도 실행되지 않았고, 그래서 즉시 접수가 죽은 것도 못 잡았다.
+
+    @Nested
+    @DisplayName("claim — 조건부 UPDATE 선점")
+    class Claim {
+
+        private static final Duration STALE_AFTER = Duration.ofMinutes(10);
+
+        @Test
+        @DisplayName("갓 만든 PENDING(started_at IS NULL)은 선점된다")
+        void claimsFreshJob() {
+            Long jobId = persistJob("idem-fresh");
+
+            assertThat(claim(jobId)).isEqualTo(1);
+            assertThat(reload(jobId).getStartedAt()).isEqualTo(NOW);
+        }
+
+        @Test
+        @DisplayName("이미 선점된 Job은 유예 시간 안에서 두 번 선점되지 않는다")
+        void rejectsSecondClaimWithinWindow() {
+            Long jobId = persistJob("idem-twice");
+            claim(jobId);
+            em.clear();
+
+            assertThat(claim(jobId))
+                    .as("두 인스턴스가 동시에 쳐도 한 쪽만 1을 받아야 한다")
+                    .isZero();
+        }
+
+        @Test
+        @DisplayName("유예 시간이 지난 선점은 회수된다 — 선점한 인스턴스가 죽어도 복구된다")
+        void reclaimsAfterStaleWindow() {
+            Long jobId = persistJob("idem-stale");
+            startedAt(jobId, NOW.minusMinutes(30));
+
+            assertThat(claim(jobId)).isEqualTo(1);
+            assertThat(reload(jobId).getStartedAt()).isEqualTo(NOW);
+        }
+
+        @Test
+        @DisplayName("PENDING이 아닌 Job은 선점되지 않는다 — 끝난 작업을 다시 돌리지 않는다")
+        void skipsFinishedJob() {
+            Long jobId = persistJob("idem-done");
+            composeJobRepository.findById(jobId).orElseThrow().complete("uploads/r.png", 1L);
+            em.flush();
+            em.clear();
+
+            assertThat(claim(jobId)).isZero();
+        }
+
+        private int claim(Long jobId) {
+            int affected = composeJobRepository.claim(jobId, NOW, NOW.minus(STALE_AFTER));
+            em.flush();
+            return affected;
+        }
+    }
+
+    @Nested
+    @DisplayName("findStalled — 재실행 대상 조회")
+    class FindStalled {
+
+        private final Pageable firstTwenty = PageRequest.of(0, 20);
+
+        @Test
+        @DisplayName("started_at이 NULL이면 시간 조건 없이 바로 잡힌다")
+        void picksUpNeverStartedJob() {
+            Long jobId = persistJob("idem-null");
+
+            assertThat(stalled()).extracting(ComposeJob::getId).containsExactly(jobId);
+        }
+
+        @Test
+        @DisplayName("갓 선점된 Job은 잡히지 않는다 — 아직 도는 중이다")
+        void skipsRecentlyClaimedJob() {
+            Long jobId = persistJob("idem-recent");
+            startedAt(jobId, NOW.minusSeconds(5));
+
+            assertThat(stalled()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("오래 멈춰 있는 Job은 잡힌다")
+        void picksUpStalledJob() {
+            Long jobId = persistJob("idem-old");
+            startedAt(jobId, NOW.minusMinutes(30));
+
+            assertThat(stalled()).extracting(ComposeJob::getId).containsExactly(jobId);
+        }
+
+        @Test
+        @DisplayName("DONE·FAILED는 아무리 오래돼도 잡히지 않는다 — 재실행의 유일한 안전장치다")
+        void neverPicksUpFinishedJobs() {
+            Long done = persistJob("idem-fin-done");
+            Long failed = persistJob("idem-fin-failed");
+            startedAt(done, NOW.minusHours(5));
+            startedAt(failed, NOW.minusHours(5));
+            composeJobRepository.findById(done).orElseThrow().complete("uploads/r.png", 1L);
+            composeJobRepository.findById(failed).orElseThrow().fail("터졌다");
+            em.flush();
+            em.clear();
+
+            assertThat(stalled()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("user를 함께 가져온다 — 워커가 트랜잭션 밖에서 publicId를 읽는다")
+        void fetchesUserEagerly() {
+            persistJob("idem-fetch");
+
+            ComposeJob job = stalled().get(0);
+            em.clear();   // 영속성 컨텍스트를 비워도 이미 로딩됐으면 읽힌다
+
+            assertThat(job.getUser().getPublicId()).isNotBlank();
+        }
+
+        @Test
+        @DisplayName("id 오름차순으로 나온다 — 오래 기다린 Job이 먼저다")
+        void ordersByIdAscending() {
+            Long first = persistJob("idem-a");
+            Long second = persistJob("idem-b");
+            Long third = persistJob("idem-c");
+
+            assertThat(stalled()).extracting(ComposeJob::getId)
+                    .containsExactly(first, second, third);
+        }
+
+        @Test
+        @DisplayName("limit을 넘겨 받지 않는다 — 한 주기에 밀어 넣는 양의 상한이다")
+        void respectsLimit() {
+            persistJob("idem-1");
+            persistJob("idem-2");
+            persistJob("idem-3");
+
+            assertThat(composeJobRepository.findStalled(STALE_BEFORE, PageRequest.of(0, 2)))
+                    .hasSize(2);
+        }
+
+        private List<ComposeJob> stalled() {
+            return composeJobRepository.findStalled(STALE_BEFORE, firstTwenty);
+        }
+    }
+
+    // ── fixtures ──────────────────────────────
+
+    private static final LocalDateTime NOW = FixedClockConfig.FIXED_NOW;
+    private static final LocalDateTime STALE_BEFORE = NOW.minusMinutes(10);
+
+    private Long persistJob(String idempotencyKey) {
+        ComposeJob job = em.persist(ComposeJob.create(
+                persistUser(idempotencyKey + "@harucut.com"), 7L, idempotencyKey, FOUR_KEYS, spec()));
+        em.flush();
+        return job.getId();
+    }
+
+    // started_at 은 엔티티에 setter 가 없다(선점 쿼리만 쓴다) — 테스트에서는 직접 갱신한다
+    private void startedAt(Long jobId, LocalDateTime value) {
+        em.getEntityManager()
+                .createQuery("UPDATE ComposeJob j SET j.startedAt = :v WHERE j.id = :id")
+                .setParameter("v", value).setParameter("id", jobId)
+                .executeUpdate();
+        em.clear();
+    }
+
+    private ComposeJob reload(Long jobId) {
+        em.clear();
+        return composeJobRepository.findById(jobId).orElseThrow();
     }
 
     // ── fixtures ──────────────────────────────
