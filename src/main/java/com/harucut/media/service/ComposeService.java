@@ -23,6 +23,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
@@ -104,6 +105,15 @@ public class ComposeService {
         composeJobRepository.findById(jobId).ifPresent(job -> job.fail(reason));
     }
 
+    // REQUIRES_NEW 가 필수다. 이 메서드의 호출자 중 하나가 AFTER_COMMIT 리스너(ComposeWorker)인데,
+    // 스프링은 그 단계를 afterCompletion(STATUS_COMMITTED) 에서 실행한다 — EntityManagerHolder 는
+    // 아직 스레드에 묶여 있고 transactionActive 도 true 라, REQUIRED 로 두면 "이미 커밋된" 트랜잭션에
+    // 참여해 버린다. Hibernate 는 커밋된 세션의 벌크 UPDATE 를 거부한다:
+    //     TransactionRequiredException: No active transaction for update or delete query
+    // 그 예외는 TransactionSynchronizationUtils 가 삼켜서 202 는 그대로 나가고 지표에도 안 잡힌다.
+    // 결과는 "즉시 접수가 통째로 죽고 모든 합성이 30초 재실행 배치로만 도는" 상태였다.
+    // 회귀 방지: ComposeClaimTransactionTest
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public boolean claim(Long jobId, Duration staleAfter) {
         LocalDateTime now = LocalDateTime.now(clock);
         return composeJobRepository.claim(jobId, now, now.minus(staleAfter)) == 1;
