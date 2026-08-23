@@ -20,12 +20,15 @@ public class ComposeWorker {
 
     private final ComposeExecutor composeExecutor;
     private final ComposeService composeService;
+    private final ComposeMetrics metrics;
     private final Duration staleAfter;
 
     public ComposeWorker(ComposeExecutor composeExecutor, ComposeService composeService,
+                         ComposeMetrics metrics,
                          @Value("${compose.stale-after:10m}") Duration staleAfter) {
         this.composeExecutor = composeExecutor;
         this.composeService = composeService;
+        this.metrics = metrics;
         this.staleAfter = staleAfter;
     }
 
@@ -41,12 +44,16 @@ public class ComposeWorker {
 
     private void execute(ComposeRequestedEvent event) {
         if (!composeService.claim(event.jobId(), staleAfter)) {
+            metrics.dispatchSkipped();
             log.debug("이미 실행 중이거나 끝난 Job — 건너뛴다: jobId={}", event.jobId());
             return;
         }
+        long startedAt = System.nanoTime();
         try {
             composeExecutor.execute(event);
+            metrics.dispatchClaimed();
         } catch (Exception e) {
+            metrics.dispatchFailed();
             // 이 catch가 두 가지를 막는다.
             //
             // (1) FAILED로 적지 않는다 — 접수가 실패한 것이라 Job은 손도 안 댄 상태다.
@@ -56,6 +63,9 @@ public class ComposeWorker {
             //     요청 스레드에서 돈다. AFTER_COMMIT에서 던진 예외는 이미 커밋된
             //     트랜잭션 위로 올라가서, 202가 확정된 요청을 500으로 뒤집는다.
             log.error("[합성] Lambda 접수 실패 — PENDING 유지: jobId={}", event.jobId(), e);
+        } finally {
+            // 성공·실패 둘 다 잰다. 이 시간이 곧 요청 스레드가 붙잡히는 시간이다
+            metrics.recordDispatch(System.nanoTime() - startedAt);
         }
     }
 }

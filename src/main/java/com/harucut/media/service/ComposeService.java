@@ -4,6 +4,7 @@ import com.harucut.common.exception.BusinessException;
 import com.harucut.common.exception.GlobalErrorCode;
 import com.harucut.frame.entity.Frame;
 import com.harucut.frame.service.FrameService;
+import com.harucut.media.compose.ComposeMetrics;
 import com.harucut.media.compose.ComposeRequestedEvent;
 import com.harucut.media.compose.ComposeSpec;
 import com.harucut.media.compose.ComposeSpecAssembler;
@@ -44,6 +45,7 @@ public class ComposeService {
     private final ComposeSpecAssembler composeSpecAssembler;
     private final S3Deleter s3Deleter;
     private final ApplicationEventPublisher eventPublisher;
+    private final ComposeMetrics composeMetrics;
     private final Clock clock;
 
     public ComposeJobResponse requestCompose(String publicId, ComposeRequest request) {
@@ -54,6 +56,7 @@ public class ComposeService {
         Optional<ComposeJob> existing =
                 composeJobRepository.findByUserAndIdempotencyKey(user, request.idempotencyKey());
         if (existing.isPresent()) {
+            composeMetrics.requestReplayed();
             return ComposeJobResponse.from(existing.get());
         }
 
@@ -74,7 +77,15 @@ public class ComposeService {
         eventPublisher.publishEvent(new ComposeRequestedEvent(
                 job.getId(), spec, job.sourceKeys(),
                 resultKeyFor(publicId, job.getId()), thumbnailKeyFor(publicId, job.getId())));
+        composeMetrics.requestAccepted();
         return ComposeJobResponse.from(job);
+    }
+
+    // 게이지용. 재실행 배치가 30초마다 한 번만 부른다 — 스크레이프마다 세면
+    // 프로메테우스 주기가 DB 부하를 정하게 된다
+    @Transactional(readOnly = true)
+    public long countPending() {
+        return composeJobRepository.countByStatus(ComposeStatus.PENDING);
     }
 
     @Transactional(readOnly = true)

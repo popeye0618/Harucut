@@ -1,5 +1,6 @@
 package com.harucut.media.compose;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import com.harucut.media.service.ComposeService;
 import com.harucut.storage.config.AwsProperties;
 import org.junit.jupiter.api.AfterEach;
@@ -72,7 +73,7 @@ class ComposeResultConsumerTest {
     @DisplayName("큐 URL 이 비어 있으면 기동에서 죽는다 — 통지를 조용히 흘리는 것보다 낫다")
     void failsFastWithoutQueueUrl() {
         assertThatThrownBy(() -> new ComposeResultConsumer(
-                mock(SqsClient.class), objectMapper, composeService, properties("")))
+                mock(SqsClient.class), objectMapper, composeService, metrics(), properties("")))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("compose-result-queue-url");
     }
@@ -251,7 +252,7 @@ class ComposeResultConsumerTest {
 
     private void start() {
         consumer = new ComposeResultConsumer(sqsClient, objectMapper, composeService,
-                properties(QUEUE_URL));
+                metrics(), properties(QUEUE_URL));
         consumer.start();
     }
 
@@ -260,6 +261,10 @@ class ComposeResultConsumerTest {
                 .messages(Message.builder()
                         .messageId("msg-1").receiptHandle("receipt-1").body(body).build())
                 .build();
+    }
+
+    private static ComposeMetrics metrics() {
+        return new ComposeMetrics(new SimpleMeterRegistry());
     }
 
     private static AwsProperties properties(String queueUrl) {

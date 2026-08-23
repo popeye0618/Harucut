@@ -6,6 +6,7 @@ import com.harucut.frame.attributes.BackgroundAttributes;
 import com.harucut.frame.entity.Frame;
 import com.harucut.frame.enums.FrameType;
 import com.harucut.frame.service.FrameService;
+import com.harucut.media.compose.ComposeMetrics;
 import com.harucut.media.compose.ComposeRequestedEvent;
 import com.harucut.media.compose.ComposeSpec;
 import com.harucut.media.compose.ComposeSpecAssembler;
@@ -19,6 +20,7 @@ import com.harucut.media.repository.UserMediaRepository;
 import com.harucut.storage.service.S3Deleter;
 import com.harucut.user.entity.User;
 import com.harucut.user.repository.UserRepository;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -91,7 +93,7 @@ class ComposeServiceTest {
         Clock fixed = Clock.fixed(Instant.parse("2026-07-20T10:00:00Z"), ZoneOffset.UTC);
         composeService = new ComposeService(userRepository, composeJobRepository,
                 userMediaRepository, frameService, composeSpecAssembler, s3Deleter,
-                eventPublisher, fixed);
+                eventPublisher, new ComposeMetrics(new SimpleMeterRegistry()), fixed);
         user = User.localUser("owner@harucut.com", "encoded", "소유자");
         ReflectionTestUtils.setField(user, "id", 1L);
     }

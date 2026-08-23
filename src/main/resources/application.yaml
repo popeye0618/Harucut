@@ -129,5 +129,27 @@ springdoc:
 server:
   shutdown: graceful
 
+# 관측 설정은 부하 프로파일에만 있었다. 그런데 docker-compose.yml 은 이미 관리 포트 8081을
+# 전제하고(publish 하지 않음) prometheus.yml 도 app:8081 을 긁는다 — 평소 프로파일로 띄우면
+# 그 스크레이프가 조용히 실패했다. 전제와 설정을 같은 자리로 모은다.
+management:
+  server:
+    # API 포트에서 분리한다. 8080 은 외부로 열려 있어서 같은 포트에 두면
+    # /actuator/prometheus 로 힙·커넥션·호출 통계가 그대로 노출된다.
+    # 8081 은 compose 네트워크 안에서만 닿는다
+    port: 8081
+
+  endpoints:
+    web:
+      exposure:
+        # '*' 로 열지 않는다. heapdump 에는 메모리에 있던 JWT 가 그대로 들어있다
+        include: health,prometheus,metrics
+
+  metrics:
+    tags:
+      application: harucut
+      # 인스턴스를 늘리면 두 인스턴스의 숫자가 한 덩어리로 섞인다 — compose 에서 다른 값을 준다
+      instance: ${INSTANCE_ID:app-1}
+
 compose:
   stale-after: 10m

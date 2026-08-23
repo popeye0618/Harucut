@@ -1,11 +1,13 @@
 package com.harucut.media.batch;
 
+import com.harucut.media.compose.ComposeMetrics;
 import com.harucut.media.compose.ComposeRequestedEvent;
 import com.harucut.media.compose.ComposeSpec;
 import com.harucut.media.compose.ComposeWorker;
 import com.harucut.media.service.ComposeService;
 import com.harucut.frame.attributes.BackgroundAttributes;
 import com.harucut.frame.enums.FrameType;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -39,10 +41,12 @@ class ComposeRerunSchedulerTest {
     private ComposeWorker composeWorker;
 
     private ComposeRerunScheduler scheduler;
+    private ComposeMetrics metrics;
 
     @BeforeEach
     void setUp() {
-        scheduler = new ComposeRerunScheduler(composeService, composeWorker, STALE_AFTER, BATCH_SIZE);
+        metrics = new ComposeMetrics(new SimpleMeterRegistry());
+        scheduler = new ComposeRerunScheduler(composeService, composeWorker, metrics, STALE_AFTER, BATCH_SIZE);
     }
 
     @Test
@@ -74,7 +78,7 @@ class ComposeRerunSchedulerTest {
         Duration customWindow = Duration.ofMinutes(3);
         given(composeService.findStalled(customWindow, 5)).willReturn(List.of());
 
-        new ComposeRerunScheduler(composeService, composeWorker, customWindow, 5).run();
+        new ComposeRerunScheduler(composeService, composeWorker, metrics, customWindow, 5).run();
 
         then(composeService).should().findStalled(customWindow, 5);
     }
