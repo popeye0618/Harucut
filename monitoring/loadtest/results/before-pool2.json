@@ -1,0 +1,23 @@
+{
+  "label": "before-pool2",
+  "requested": 30,
+  "accepted": 30,
+  "rejectedAtAccept": 0,
+  "done": 30,
+  "failed": 0,
+  "stillPending": 0,
+  "lossRate": 0,
+  "acceptMs": {
+    "p50": 1244,
+    "p95": 1452,
+    "max": 1465
+  },
+  "endToEndSec": {
+    "p50": 17,
+    "max": 30
+  },
+  "failureReasons": [],
+  "rejectSamples": [],
+  "startedAt": "2026-08-22T18:23:58.751Z",
+  "finishedAt": "2026-08-22T18:24:28.613Z"
+}

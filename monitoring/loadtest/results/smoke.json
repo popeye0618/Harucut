@@ -1,0 +1,23 @@
+{
+  "label": "smoke",
+  "requested": 1,
+  "accepted": 1,
+  "rejectedAtAccept": 0,
+  "done": 1,
+  "failed": 0,
+  "stillPending": 0,
+  "lossRate": 0,
+  "acceptMs": {
+    "p50": 470,
+    "p95": 470,
+    "max": 470
+  },
+  "endToEndSec": {
+    "p50": 28,
+    "max": 28
+  },
+  "failureReasons": [],
+  "rejectSamples": [],
+  "startedAt": "2026-08-22T18:17:05.485Z",
+  "finishedAt": "2026-08-22T18:17:33.529Z"
+}

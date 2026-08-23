@@ -1,0 +1,23 @@
+{
+  "label": "after",
+  "requested": 30,
+  "accepted": 30,
+  "rejectedAtAccept": 0,
+  "done": 30,
+  "failed": 0,
+  "stillPending": 0,
+  "lossRate": 0,
+  "acceptMs": {
+    "p50": 1322,
+    "p95": 1520,
+    "max": 1521
+  },
+  "endToEndSec": {
+    "p50": 21,
+    "max": 53
+  },
+  "failureReasons": [],
+  "rejectSamples": [],
+  "startedAt": "2026-08-22T18:26:53.651Z",
+  "finishedAt": "2026-08-22T18:27:46.415Z"
+}

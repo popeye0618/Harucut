@@ -1,0 +1,29 @@
+{
+  "label": "before-pool20",
+  "requested": 30,
+  "accepted": 30,
+  "rejectedAtAccept": 0,
+  "done": 21,
+  "failed": 9,
+  "stillPending": 0,
+  "lossRate": 30,
+  "acceptMs": {
+    "p50": 1038,
+    "p95": 1446,
+    "max": 1450
+  },
+  "endToEndSec": {
+    "p50": 7,
+    "max": 10
+  },
+  "failureReasons": [
+    "Rate Exceeded. (Service: Lambda, Status Code: 429, Request ID: 95e606f3-c1ff-4140-9f74-0f75aed5f9c1)",
+    "Rate Exceeded. (Service: Lambda, Status Code: 429, Request ID: acafaec9-1421-42d5-8d83-14812ec1cbc8)",
+    "Rate Exceeded. (Service: Lambda, Status Code: 429, Request ID: 22863f41-5135-4950-95d4-bd94d6c0b436)",
+    "Rate Exceeded. (Service: Lambda, Status Code: 429, Request ID: aa3260c2-2455-4cee-91fc-55656bfcd1d6)",
+    "Rate Exceeded. (Service: Lambda, Status Code: 429, Request ID: b372f313-20fd-4d14-bfc4-2f7192023951)"
+  ],
+  "rejectSamples": [],
+  "startedAt": "2026-08-22T18:25:35.773Z",
+  "finishedAt": "2026-08-22T18:25:46.227Z"
+}

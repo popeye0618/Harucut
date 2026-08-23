@@ -1,0 +1,645 @@
+{
+  "links": [
+    {
+      "title": "전체 비교 (세 실행)",
+      "type": "link",
+      "icon": "dashboard",
+      "url": "/d/harucut-compose?orgId=1&from=1787423008751&to=1787423296415",
+      "targetBlank": false,
+      "tooltip": "세 실행이 한 화면에 들어온다"
+    },
+    {
+      "title": "개선 전 · 스레드 2",
+      "type": "link",
+      "icon": "external link",
+      "url": "/d/harucut-compose?orgId=1&from=1787423008751&to=1787423098613",
+      "targetBlank": false,
+      "tooltip": "유실 0, 전부 끝나기까지 30초"
+    },
+    {
+      "title": "개선 전 · 스레드 20",
+      "type": "link",
+      "icon": "external link",
+      "url": "/d/harucut-compose?orgId=1&from=1787423105773&to=1787423176227",
+      "targetBlank": false,
+      "tooltip": "10초로 빨라지지만 9건(30%) 영구 손실"
+    },
+    {
+      "title": "개선 후",
+      "type": "link",
+      "icon": "external link",
+      "url": "/d/harucut-compose?orgId=1&from=1787423183651&to=1787423296415",
+      "targetBlank": false,
+      "tooltip": "유실 0, 전부 끝나기까지 53초"
+    }
+  ],
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "graphTooltip": 1,
+  "uid": "harucut-compose",
+  "title": "하루컷 — 합성 파이프라인 개선 전/후",
+  "description": "포트폴리오 캡처용. 시간 범위를 측정일(2026-08-21)로 맞추고, 개선 전 구간과 후 구간을 각각 잡아 두 장 찍으면 된다.",
+  "tags": [
+    "harucut",
+    "portfolio"
+  ],
+  "timezone": "browser",
+  "refresh": "",
+  "schemaVersion": 39,
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "app",
+        "label": "application",
+        "description": "application-load.yaml 의 management.metrics.tags.application 값이다.",
+        "type": "custom",
+        "query": "harucut",
+        "current": {
+          "text": "harucut",
+          "value": "harucut"
+        },
+        "options": [
+          {
+            "text": "harucut",
+            "value": "harucut",
+            "selected": true
+          }
+        ],
+        "includeAll": false,
+        "allowCustomValue": true
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 100,
+      "type": "text",
+      "title": "이 대시보드를 읽는 법",
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "세 번의 실행이 시간순으로 이어져 있다. 범례의 `before-pool2`, `before-pool20`, `after` 가 각각 한 번의 부하 실행이다. 상단 버튼으로 구간을 바로 열 수 있다.\n\n**개선 전 · 스레드 2** — 동시 30건을 스레드 2개로 처리한다. 유실은 없지만 마지막 건이 끝나기까지 30초가 걸린다.\n\n**개선 전 · 스레드 20** — 처리는 10초로 빨라지지만 Lambda 동시 실행 한도(계정 10)를 넘긴 요청이 429 를 받는다. 동기 호출이라 그대로 예외가 되어 FAILED 로 확정된다. 30건 중 9건이 영구 손실이다.\n\n**개선 후** — 같은 한도에서 30건 전부 성공한다. 초과분을 버리지 않고 Lambda 내부 큐에 줄 세우기 때문이다. 대신 마지막 건은 53초가 걸린다.\n\n**유실 건수는 이 대시보드에 없다.** 접수는 세 실행 모두 30건 전부 202 였고, 손실은 그 뒤 합성 워커에서 일어난다. 유실은 `compose_job` 테이블의 최종 상태로만 보인다."
+      }
+    },
+    {
+      "type": "row",
+      "title": "핵심 지표 — 이 줄만 찍어도 이야기가 된다",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 5
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "접수 API p95 (POST /compose)",
+      "description": "세 실행이 사실상 같다. 1.52 / 1.42 / 1.41초.\n\n개선 전 코드도 이미 @Async 워커라서 요청 스레드가 Lambda 를 기다리지 않았다. 7.9초를 붙잡고 있던 것은 요청 스레드가 아니라 합성 워커 스레드다. 그래서 접수 시간은 개선의 성과가 아니다.\n\nrate() 를 쓰지 않고 누적 히스토그램을 그대로 읽는다. 컨테이너를 실행마다 새로 만들기 때문에 누적값이 곧 그 실행 30건의 분포다. 30건이 1.5초 안에 다 들어오는데 스크랩 간격이 5초라, rate() 로는 이 순간을 잡을 수 없다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "harucut-prom"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 0,
+        "y": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 2,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "harucut-prom"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum by (le, exported_instance) (http_server_requests_seconds_bucket{application=\"$app\", uri=\"/api/auth/user/media/compose\", method=\"POST\"}))",
+          "legendFormat": "p95 {{exported_instance}}",
+          "range": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "JVM 활성 스레드 최대",
+      "description": "스레드풀을 2에서 20으로 늘린 차이가 그대로 보인다. 75 / 93 / 74.\n\n93 - 75 = 18 이고, 늘린 스레드 수와 정확히 같다.\n\n개선 후(74)가 스레드 2개일 때(75)와 같다. 스레드풀을 통째로 지웠는데 스레드 수는 늘지 않았다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "harucut-prom"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 8,
+        "y": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "max"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "harucut-prom"
+          },
+          "editorMode": "code",
+          "expr": "jvm_threads_live_threads{application=\"$app\"}",
+          "legendFormat": "{{exported_instance}}",
+          "range": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "대기 상태 스레드 최대",
+      "description": "24 / 35 / 25. 스레드 20 에서 늘어난 11개가 동기 Lambda 호출의 응답을 소켓에서 기다리는 스레드다.\n\n활성 스레드는 18개 늘었는데 그중 11개가 대기 상태였다. 스레드를 더 줬지만 그 스레드가 한 일은 기다리는 것뿐이다. 병목이 우리 스레드가 아니라 Lambda 동시 실행 한도(10)였다는 근거다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "harucut-prom"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 16,
+        "y": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.01
+              },
+              {
+                "color": "red",
+                "value": 0.1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "max"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "harucut-prom"
+          },
+          "editorMode": "code",
+          "expr": "jvm_threads_states_threads{application=\"$app\", state=\"waiting\"}",
+          "legendFormat": "{{exported_instance}}",
+          "range": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "시계열 — 전/후 구간을 한 화면에 담고 싶을 때",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 13
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "접수 API 응답시간 (p50 / p95 / p99)",
+      "description": "실행마다 선이 평평하다. 30건이 한꺼번에 도착해 첫 스크랩에서 이미 누적 분포가 완성되기 때문이다. 선의 높이가 그 실행의 값이다.\n\n세 구간의 높이가 거의 같다는 것이 이 패널이 말하는 전부다. 접수 응답 시간은 개선 전후로 달라지지 않았다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "harucut-prom"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 14
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "scaleDistribution": {
+              "type": "log",
+              "log": 10
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": [
+            "max",
+            "mean"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "harucut-prom"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.5, sum by (le, exported_instance) (http_server_requests_seconds_bucket{application=\"$app\", uri=\"/api/auth/user/media/compose\", method=\"POST\"}))",
+          "legendFormat": "p50 {{exported_instance}}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "harucut-prom"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum by (le, exported_instance) (http_server_requests_seconds_bucket{application=\"$app\", uri=\"/api/auth/user/media/compose\", method=\"POST\"}))",
+          "legendFormat": "p95 {{exported_instance}}",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "harucut-prom"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.99, sum by (le, exported_instance) (http_server_requests_seconds_bucket{application=\"$app\", uri=\"/api/auth/user/media/compose\", method=\"POST\"}))",
+          "legendFormat": "p99 {{exported_instance}}",
+          "range": true,
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "접수 응답 누적 건수 (상태별)",
+      "description": "세 실행 모두 30건 전부 202 다. 실패한 응답이 하나도 없다.\n\n이 패널의 목적은 성과가 아니라 한계를 밝히는 것이다. 개선 전 스레드 20 에서 9건이 영구 손실됐지만, 클라이언트는 이미 202 를 받은 뒤였다. 손실은 그 뒤 합성 워커에서 일어나므로 HTTP 메트릭에는 절대 나타나지 않는다.\n\n유실 건수는 compose_job 테이블의 최종 상태로만 확인할 수 있다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "harucut-prom"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 14
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 70,
+            "lineWidth": 0,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          },
+          "decimals": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "5.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": [
+            "sum"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "harucut-prom"
+          },
+          "editorMode": "code",
+          "expr": "sum by (exported_instance, status) (http_server_requests_seconds_count{application=\"$app\", uri=\"/api/auth/user/media/compose\", method=\"POST\"})",
+          "legendFormat": "{{exported_instance}} {{status}}",
+          "range": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "JVM 활성 스레드",
+      "description": "이 대시보드에서 개선 근거로 쓸 수 있는 값은 여기다.\n\nlive 최대: 스레드2 = 75, 스레드20 = 93, 개선후 = 74.\n93 - 75 = 18 이고, 이는 스레드풀을 2에서 20으로 늘린 차이 그대로다. 늘린 스레드가 그래프에 그대로 보인다.\n\nwaiting 최대: 24 / 35 / 25. 늘어난 18개 중 11개가 대기 상태다. 동기 Lambda 호출의 응답을 소켓에서 기다리는 스레드이고, 스레드를 늘려도 그 스레드가 하는 일은 기다리는 것뿐이라는 증거다.\n\n개선 후(74)가 스레드2(75)와 같다. 스레드풀을 통째로 지웠는데 스레드 수는 늘지 않았다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "harucut-prom"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 23
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": [
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "harucut-prom"
+          },
+          "expr": "jvm_threads_live_threads{application=\"$app\"}",
+          "legendFormat": "live {{exported_instance}}"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "harucut-prom"
+          },
+          "expr": "jvm_threads_states_threads{application=\"$app\", state=\"waiting\"}",
+          "legendFormat": "waiting {{exported_instance}}"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "HikariCP 커넥션 점유",
+      "description": "개선 지표가 아니라 용의자 배제용이다.\n\n세 실행 모두 active 는 0~1 사이, pending 은 계속 0, max 는 10 이다. 커넥션 10개 중 1개도 제대로 안 썼고 대기한 적도 없다. DB 커넥션은 어느 구간에서도 병목이 아니었다.\n\n쓸 곳은 하나다. 병목을 Lambda 동시성으로 좁힌 근거로 쓴다. 느린 원인을 DB 나 커넥션 풀에서 찾다가 시간을 버리지 않았다는 뜻이다.\n\n주의: 동시 30건은 작은 부하다. 이 값을 근거로 커넥션 풀이 넉넉하다고 일반화하면 안 된다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "harucut-prom"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 23
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": [
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "harucut-prom"
+          },
+          "expr": "hikaricp_connections_active{application=\"$app\"}",
+          "legendFormat": "active {{exported_instance}}"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "harucut-prom"
+          },
+          "expr": "hikaricp_connections_pending{application=\"$app\"}",
+          "legendFormat": "pending {{exported_instance}}"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "harucut-prom"
+          },
+          "expr": "hikaricp_connections_max{application=\"$app\"}",
+          "legendFormat": "max"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "조회 API 응답시간 p95 (GET /compose/{jobId})",
+      "description": "값이 줄어드는 것은 개선 효과가 아니라 JIT 워밍업이다.\n\n실행마다 앱 컨테이너를 새로 만들기 때문에 매번 콜드 스타트에서 시작한다. 개선 후 구간 안에서도 23ms 에서 15ms 로 내려간다.\n\n실행별 p95 는 26 / 48 / 22ms 인데, 가운데가 높은 이유는 그 실행이 11초 만에 끝나 폴링 호출이 48건뿐이었기 때문이다. 표본이 작아 p95 가 튄 것이지 느려진 것이 아니다.\n\n이 패널의 쓸모는 부작용 확인이다. 접수를 비동기로 바꾸면서 폴링 엔드포인트를 느리게 만들지 않았다는 것을 보여준다. 성과가 아니라 반증 방어로 쓴다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "harucut-prom"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 23
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": [
+            "max",
+            "mean"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "harucut-prom"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum by (le, exported_instance) (rate(http_server_requests_seconds_bucket{application=\"$app\", uri=\"/api/auth/user/media/compose/{jobId}\", method=\"GET\"}[1m])))",
+          "legendFormat": "p95 {{exported_instance}}",
+          "range": true,
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}
