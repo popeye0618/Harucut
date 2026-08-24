@@ -25,5 +25,33 @@ dependencies {
 }
 
 tasks.named('test') {
-    useJUnitPlatform()
+    useJUnitPlatform {
+        // 벤치는 단언이 없고 몇 분씩 걸린다 — CI의 test에 딸려 들어가면 안 된다.
+        // @Disabled 가 아니라 태그인 이유: @Disabled 는 "고장나서 꺼둠"과 구분이 안 된다
+        excludeTags 'bench'
+    }
+}
+
+// 측정 전용 태스크 — ./gradlew :compose-core:benchmark
+// 기본 힙으로는 모자란다: 4000×6000 ARGB 캔버스 91MB + 평탄화 사본 91MB + PNG 결과 42MB가 겹친다.
+// showStandardStreams 없이는 그레이들이 System.out 을 삼켜서 표가 안 보인다
+tasks.register('benchmark', Test) {
+    description = '결과물 저장 포맷 측정 (docs/perf-10k-dau.md §3.4)'
+    group = 'verification'
+
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform {
+        includeTags 'bench'
+    }
+
+    maxHeapSize = '2g'
+    testLogging { showStandardStreams = true }
+    outputs.upToDateWhen { false }   // 측정은 캐시하면 안 된다 — 매번 다시 잰다
+
+    ['bench.photos', 'bench.dump'].each { key ->
+        if (System.getProperty(key) != null) {
+            systemProperty key, System.getProperty(key)
+        }
+    }
 }

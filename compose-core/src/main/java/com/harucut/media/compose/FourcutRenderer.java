@@ -58,6 +58,14 @@ public class FourcutRenderer {
     private static final float THUMBNAIL_JPEG_QUALITY = 0.8f;
 
     public RenderResult render(ComposeSpec spec, List<byte[]> sourcePhotos, Map<String, byte[]> assets) {
+        BufferedImage canvas = draw(spec, sourcePhotos, assets);
+        return new RenderResult(encodePng(canvas), encodeThumbnail(canvas));
+    }
+
+    // 그리기만 — 인코딩과 분리해 둔다. 같은 캔버스를 포맷 여러 벌로 인코딩해 비교하려면
+    // (EncodingBenchmark) 캔버스를 손에 쥘 수 있어야 하고, 렌더와 인코딩의 시간 비중도
+    // 나눠 놓지 않으면 못 잰다. 포맷이 선택 가능해지면 render가 이 위에 얹힌다
+    BufferedImage draw(ComposeSpec spec, List<byte[]> sourcePhotos, Map<String, byte[]> assets) {
         if (sourcePhotos == null || sourcePhotos.size() != spec.slots().size()) {
             throw new IllegalArgumentException("원본 사진 수가 슬롯 수와 다르다");
         }
@@ -74,7 +82,7 @@ public class FourcutRenderer {
         } finally {
             g.dispose();
         }
-        return new RenderResult(encodePng(canvas), encodeThumbnail(canvas));
+        return canvas;
     }
 
     // ── 그리기 순서 1: 배경 (색 → 이미지) ──────────────────────
@@ -228,7 +236,7 @@ public class FourcutRenderer {
         return bytes;
     }
 
-    private static byte[] encodePng(BufferedImage canvas) {
+    static byte[] encodePng(BufferedImage canvas) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         try {
             if (!ImageIO.write(canvas, "png", out)) {
@@ -243,7 +251,7 @@ public class FourcutRenderer {
     // ── 썸네일 — 목록 그리드용 축소본 ──────────────────────
 
     private static byte[] encodeThumbnail(BufferedImage canvas) {
-        return encodeJpeg(scaleToLongEdge(canvas, THUMBNAIL_LONG_EDGE));
+        return encodeJpeg(scaleToLongEdge(canvas, THUMBNAIL_LONG_EDGE), THUMBNAIL_JPEG_QUALITY);
     }
 
     // 절반씩 반복 축소 — 10배급 축소를 bilinear 한 번에 하면 보간이 인접 픽셀만 보고
@@ -262,6 +270,13 @@ public class FourcutRenderer {
         return drawScaled(current, targetWidth, targetHeight);
     }
 
+    // 크기는 그대로 두고 알파만 버린다 — 원본을 JPEG로 인코딩하려면 먼저 거쳐야 하는 단계다.
+    // 지금은 벤치(☐1-2)가 이 비용만 따로 재려고 쓴다. 배율 1의 drawScaled와 같은 일이라
+    // 구현을 나누지 않는다 — 두 벌이 되면 한쪽만 고쳐지는 날이 온다
+    static BufferedImage toRgb(BufferedImage source) {
+        return drawScaled(source, source.getWidth(), source.getHeight());
+    }
+
     // JPEG은 알파 채널을 못 다룬다(ARGB를 그대로 쓰면 예외나 색 왜곡) — RGB 캔버스에
     // 다시 그리며 알파를 버린다. 합성 결과는 배경이 항상 칠해져 있어 잃는 픽셀이 없다
     private static BufferedImage drawScaled(BufferedImage source, int width, int height) {
@@ -276,8 +291,10 @@ public class FourcutRenderer {
         return scaled;
     }
 
-    // 품질 지정은 ImageIO.write 기본 경로로는 안 된다 — writer의 압축 파라미터를 직접 만진다
-    private static byte[] encodeJpeg(BufferedImage image) {
+    // 품질 지정은 ImageIO.write 기본 경로로는 안 된다 — writer의 압축 파라미터를 직접 만진다.
+    // 품질을 상수로 읽지 않고 인자로 받는 이유: 썸네일과 원본이 같은 값을 쓸 이유가 없다.
+    // 상수에 묶여 있으면 썸네일 품질을 건드릴 때 원본까지 따라 바뀐다
+    static byte[] encodeJpeg(BufferedImage image, float quality) {
         Iterator<ImageWriter> writers = ImageIO.getImageWritersByFormatName("jpg");
         if (!writers.hasNext()) {
             throw new IllegalStateException("JPEG 인코더를 찾을 수 없다");
@@ -285,7 +302,7 @@ public class FourcutRenderer {
         ImageWriter writer = writers.next();
         ImageWriteParam param = writer.getDefaultWriteParam();
         param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
-        param.setCompressionQuality(THUMBNAIL_JPEG_QUALITY);
+        param.setCompressionQuality(quality);
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         try (ImageOutputStream stream = ImageIO.createImageOutputStream(out)) {
