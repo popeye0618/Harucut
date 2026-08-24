@@ -40,7 +40,7 @@ class FourcutRendererTest {
         @Test
         @DisplayName("COLOR 배경이 캔버스 크기 전체를 칠한다")
         void colorFillsCanvas() {
-            BufferedImage result = decode(renderer.render(
+            BufferedImage result = decode(render(
                     spec(new BackgroundAttributes.Color("#FF0000"), List.of(), List.of(), List.of()),
                     List.of(), Map.of()));
 
@@ -52,7 +52,7 @@ class FourcutRendererTest {
         @Test
         @DisplayName("#RGB 축약형은 #RRGGBB로 확장된다 — 프론트 normalizeHexColor와 동일")
         void shortHexExpanded() {
-            BufferedImage result = decode(renderer.render(
+            BufferedImage result = decode(render(
                     spec(new BackgroundAttributes.Color("#0F0"), List.of(), List.of(), List.of()),
                     List.of(), Map.of()));
 
@@ -65,7 +65,7 @@ class FourcutRendererTest {
             ComposeSpec spec = spec(new BackgroundAttributes.Image("bg-key", 0.5, null),
                     List.of(), List.of(), List.of());
 
-            BufferedImage result = decode(renderer.render(
+            BufferedImage result = decode(render(
                     spec, List.of(), Map.of("bg-key", solidPng(10, 10, RED))));
 
             // 빨강 50% + 기본색(35,38,45) 50%
@@ -85,7 +85,7 @@ class FourcutRendererTest {
                             new Slot(5, 55, 40, 40), new Slot(55, 55, 40, 40)),
                     List.of(), List.of());
 
-            BufferedImage result = decode(renderer.render(spec, List.of(
+            BufferedImage result = decode(render(spec, List.of(
                     solidPng(10, 10, RED), solidPng(10, 10, GREEN),
                     solidPng(10, 10, BLUE), solidPng(10, 10, YELLOW)), Map.of()));
 
@@ -102,7 +102,7 @@ class FourcutRendererTest {
             ComposeSpec spec = spec(whiteBackground(),
                     List.of(new Slot(40, 40, 20, 20)), List.of(), List.of());
 
-            BufferedImage result = decode(renderer.render(
+            BufferedImage result = decode(render(
                     spec, List.of(solidPng(40, 10, BLUE)), Map.of()));
 
             assertThat(pixel(result, 50, 50)).isEqualTo(BLUE);
@@ -117,7 +117,7 @@ class FourcutRendererTest {
             ComposeSpec spec = spec(whiteBackground(),
                     List.of(new Slot(40, 40, 20, 20)), List.of(), List.of());
 
-            BufferedImage result = decode(renderer.render(
+            BufferedImage result = decode(render(
                     spec, List.of(twoTonePng(20, 10, RED, BLUE)), Map.of()));
 
             assertCloseTo(pixel(result, 44, 50), RED, 3);
@@ -137,7 +137,7 @@ class FourcutRendererTest {
                     layer("red", 30, 10, 30, 30, 0, 2, 1.0),
                     layer("green", 10, 10, 30, 30, 0, 1, 1.0)));
 
-            BufferedImage result = decode(renderer.render(spec, List.of(), Map.of(
+            BufferedImage result = decode(render(spec, List.of(), Map.of(
                     "red", solidPng(10, 10, RED), "green", solidPng(10, 10, GREEN))));
 
             assertThat(pixel(result, 35, 25)).isEqualTo(RED);
@@ -150,7 +150,7 @@ class FourcutRendererTest {
             ComposeSpec spec = spec(whiteBackground(), List.of(), List.of(), List.of(
                     layer("red", 30, 30, 40, 40, 45, 1, 1.0)));
 
-            BufferedImage result = decode(renderer.render(
+            BufferedImage result = decode(render(
                     spec, List.of(), Map.of("red", solidPng(10, 10, RED))));
 
             assertCloseTo(pixel(result, 50, 50), RED, 3);
@@ -163,7 +163,7 @@ class FourcutRendererTest {
             ComposeSpec spec = spec(whiteBackground(), List.of(), List.of(), List.of(
                     layer("red", 30, 30, 40, 40, 0, 1, 0.5)));
 
-            BufferedImage result = decode(renderer.render(
+            BufferedImage result = decode(render(
                     spec, List.of(), Map.of("red", solidPng(10, 10, RED))));
 
             assertCloseTo(pixel(result, 50, 50), new Color(255, 128, 128), 3);
@@ -177,7 +177,7 @@ class FourcutRendererTest {
         @Test
         @DisplayName("켠 칸은 중앙이 밝고 가장자리로 갈수록 어두워진다")
         void vignetteDarkensEdges() {
-            BufferedImage result = decode(renderer.render(cutoutSpec(),
+            BufferedImage result = decode(render(cutoutSpec(),
                     List.of(solidPng(10, 10, WHITE)), Map.of()));
 
             assertCloseTo(pixel(result, 100, 100), WHITE, 5);
@@ -187,7 +187,7 @@ class FourcutRendererTest {
         @Test
         @DisplayName("켠 칸의 테두리에 녹색 링이 그려진다")
         void greenRingOnSlotBorder() {
-            BufferedImage result = decode(renderer.render(cutoutSpec(),
+            BufferedImage result = decode(render(cutoutSpec(),
                     List.of(solidPng(10, 10, WHITE)), Map.of()));
 
             assertCloseTo(pixel(result, 100, 20), new Color(0x1E, 0xD7, 0x60), 40);
@@ -207,7 +207,7 @@ class FourcutRendererTest {
         @Test
         @DisplayName("세로형(600x1800)은 긴 변이 512로 줄고 비율이 유지된다 — 171x512")
         void portraitScaledToLongEdge() {
-            RenderResult result = renderer.render(
+            RenderResult result = render(
                     new ComposeSpec(600, 1800, new BackgroundAttributes.Color("#FF0000"),
                             List.of(), List.of(), List.of()),
                     List.of(), Map.of());
@@ -220,7 +220,7 @@ class FourcutRendererTest {
         @Test
         @DisplayName("가로형(1200x400)은 512x171이다 — 절반 축소를 한 번 거치는 경로")
         void landscapeScaledThroughHalving() {
-            RenderResult result = renderer.render(
+            RenderResult result = render(
                     new ComposeSpec(1200, 400, new BackgroundAttributes.Color("#FF0000"),
                             List.of(), List.of(), List.of()),
                     List.of(), Map.of());
@@ -233,7 +233,7 @@ class FourcutRendererTest {
         @Test
         @DisplayName("원본이 512보다 작으면 확대하지 않는다 — 100x100 그대로")
         void neverUpscaled() {
-            RenderResult result = renderer.render(
+            RenderResult result = render(
                     spec(whiteBackground(), List.of(), List.of(), List.of()),
                     List.of(), Map.of());
 
@@ -245,7 +245,7 @@ class FourcutRendererTest {
         @Test
         @DisplayName("썸네일은 JPEG이다 — 매직 바이트 FF D8")
         void thumbnailIsJpeg() {
-            RenderResult result = renderer.render(
+            RenderResult result = render(
                     spec(whiteBackground(), List.of(), List.of(), List.of()),
                     List.of(), Map.of());
 
@@ -260,7 +260,7 @@ class FourcutRendererTest {
             ComposeSpec spec = new ComposeSpec(1024, 1024, whiteBackground(),
                     List.of(new Slot(0, 0, 512, 1024)), List.of(), List.of());
 
-            RenderResult result = renderer.render(spec, List.of(solidPng(10, 10, BLUE)), Map.of());
+            RenderResult result = render(spec, List.of(solidPng(10, 10, BLUE)), Map.of());
 
             BufferedImage thumb = decode(result.thumbnailJpeg());
             assertThat(thumb.getWidth()).isEqualTo(512);
@@ -280,7 +280,7 @@ class FourcutRendererTest {
                     List.of(new Slot(5, 5, 40, 40), new Slot(55, 5, 40, 40)),
                     List.of(), List.of());
 
-            assertThatThrownBy(() -> renderer.render(spec, List.of(solidPng(10, 10, RED)), Map.of()))
+            assertThatThrownBy(() -> render(spec, List.of(solidPng(10, 10, RED)), Map.of()))
                     .isInstanceOf(IllegalArgumentException.class);
         }
 
@@ -290,7 +290,7 @@ class FourcutRendererTest {
             ComposeSpec spec = spec(whiteBackground(), List.of(), List.of(), List.of(
                     layer("missing-key", 0, 0, 10, 10, 0, 1, 1.0)));
 
-            assertThatThrownBy(() -> renderer.render(spec, List.of(), Map.of()))
+            assertThatThrownBy(() -> render(spec, List.of(), Map.of()))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("missing-key");
         }
@@ -301,13 +301,20 @@ class FourcutRendererTest {
             ComposeSpec spec = spec(whiteBackground(),
                     List.of(new Slot(5, 5, 40, 40)), List.of(), List.of());
 
-            assertThatThrownBy(() -> renderer.render(
+            assertThatThrownBy(() -> render(
                     spec, List.of("이미지 아님".getBytes()), Map.of()))
                     .isInstanceOf(IllegalArgumentException.class);
         }
     }
 
     // ── fixtures ──────────────────────────────
+
+    // 픽셀 단언은 무손실이어야 성립한다 — JPEG로 재면 값이 정확히 안 맞는다.
+    // 그래서 여기서는 PNG로 고정한다. JPEG 출력의 픽셀 허용 오차는 별도로 잰다(☐1-3)
+    private RenderResult render(ComposeSpec spec, List<byte[]> sourcePhotos,
+                                Map<String, byte[]> assets) {
+        return renderer.render(spec, sourcePhotos, assets, ImageFormat.PNG);
+    }
 
     private static ComposeSpec spec(BackgroundAttributes background, List<Slot> slots,
                                     List<Boolean> cutouts, List<ComposeSpec.Layer> layers) {
@@ -364,7 +371,7 @@ class FourcutRendererTest {
 
     // 기존 픽셀 테스트는 전부 원본을 본다 — 썸네일 검증은 Thumbnail 클래스가 따로 한다
     private static BufferedImage decode(RenderResult result) {
-        return decode(result.fullPng());
+        return decode(result.full());
     }
 
     private static Color pixel(BufferedImage image, int x, int y) {

@@ -127,7 +127,8 @@ class EncodingBenchmark {
                 long drawMillis = medianMillis(() -> renderer.draw(spec, photos, assets));
                 BufferedImage canvas = renderer.draw(spec, photos, assets);
                 long pngMillis = medianMillis(() -> FourcutRenderer.encodePng(canvas));
-                long totalMillis = medianMillis(() -> renderer.render(spec, photos, assets));
+                long totalMillis =
+                        medianMillis(() -> renderer.render(spec, photos, assets, ImageFormat.PNG));
 
                 row(frame.label(), sources.label(), drawMillis + "ms", pngMillis + "ms",
                         totalMillis + "ms", "%.0f%%".formatted(100.0 * pngMillis / totalMillis));

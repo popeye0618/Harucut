@@ -13,7 +13,8 @@ public record DisplayNameUpdateRequest(
 
                 **서버가 정제한 뒤 저장한다** — 경로(`../`, `foo/bar`)·따옴표·개행·제어문자를 없애고,
                 **원본 파일의 확장자를 다시 붙인다.** 확장자를 빼고 `my_photo` 를 보내면
-                `my_photo.png` 로 저장된다. 응답으로 최종 저장값이 돌아오니 그걸 화면에 반영할 것.""",
+                `my_photo.jpg` 로 저장된다(JPEG 전환 전 사진이면 `.png`).
+                응답으로 최종 저장값이 돌아오니 그걸 화면에 반영할 것.""",
                 example = "나의 기록", requiredMode = Schema.RequiredMode.REQUIRED)
         String displayName
 ) {

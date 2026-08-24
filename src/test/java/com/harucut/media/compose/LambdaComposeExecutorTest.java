@@ -111,7 +111,8 @@ class LambdaComposeExecutorTest {
     }
 
     private static ComposeRequestedEvent event() {
-        return new ComposeRequestedEvent(JOB_ID, spec(), SOURCE_KEYS, RESULT_KEY, THUMB_KEY);
+        return new ComposeRequestedEvent(
+                JOB_ID, spec(), SOURCE_KEYS, RESULT_KEY, THUMB_KEY, ImageFormat.PNG);
     }
 
     private static ComposeSpec spec() {
