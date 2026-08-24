@@ -244,7 +244,25 @@ q 구간별 증가율은 생성 이미지·실사진 양쪽에서 동일하게 �
 > (`ComposeService.java:113`) 재합성이 불가능하다. 낮은 q로 굴린 기간의 결과물은
 > **영구히 그 화질**이다. 그래서 순서가 "전환 → 측정"이 아니라 "측정 → 전환"이었다.
 
-### 3.6 구현 ⏸ / 3.7 검증 ⏸
+### 3.6 구현 ✅ — 배선과 flip을 커밋으로 갈랐다
+
+두 커밋이다. **커밋 경계가 곧 배포 경계다.**
+
+1. **배선** — 포맷을 payload 계약으로 (`ComposeLambdaPayload.outputFormat`, null이면 PNG 폴백).
+   키 확장자·바이트·contentType이 전부 `ComposeService.RESULT_FORMAT` 한 상수에서 파생된다.
+   이 커밋까지는 결과물이 안 바뀐다 (RESULT_FORMAT = PNG)
+2. **flip** — `RESULT_FORMAT = JPEG` 한 줄 + Swagger 예시 정리.
+   **그 사이에 Lambda를 먼저 배포하고 스모크로 확인했다** — 새 Lambda + 옛 payload로
+   합성 1건, 결과 매직넘버 `89 50 4E 47`(PNG) 확인. 폴백이 실전에서 동작한다
+
+썸네일 도입 때(`thumbnailKey` null 허용)와 같은 패턴이다. 이 저장소에서 두 번째 사용.
+
+### 3.7 검증 ☐ — flip 배포 후
+
+- ☐ 운영에서 합성 1건 → `job-{id}.jpg` 매직넘버 `FF D8 FF`(JPEG) 확인
+- ☐ 옛 `.png` 미디어와 새 `.jpg` 미디어가 목록·다운로드에서 함께 동작하는지
+- ☐ 렌더 시간 지표(Micrometer)에서 인코딩 단축이 보이는지 — §3.4의 39% 예측과 대조
+- ☐ S3 버킷 크기 증가 속도 변화 (며칠 뒤)
 
 ---
 

@@ -59,7 +59,7 @@ class ComposeServiceTest {
             "uploads/users/AbCdEf12Gh01/fourcuts/sources/3.jpg",
             "uploads/users/AbCdEf12Gh01/fourcuts/sources/4.jpg");
     private static final String RESULT_KEY =
-            "uploads/users/AbCdEf12Gh01/fourcuts/job-" + JOB_ID + ".png";
+            "uploads/users/AbCdEf12Gh01/fourcuts/job-" + JOB_ID + ".jpg";
     private static final String THUMB_KEY =
             "uploads/users/AbCdEf12Gh01/fourcuts/job-" + JOB_ID + "-thumb.jpg";
 
@@ -251,7 +251,8 @@ class ComposeServiceTest {
             then(userMediaRepository).should().save(captor.capture());
             assertThat(captor.getValue().getS3Key()).isEqualTo(RESULT_KEY);
             assertThat(captor.getValue().getThumbnailKey()).isEqualTo(THUMB_KEY);
-            assertThat(captor.getValue().getDisplayName()).isEqualTo("harucut_20260720_100000.png");
+            // 확장자는 s3Key에서 파생된다(DisplayNames) — 결과물이 .jpg가 되면 표시 이름도 따라온다
+            assertThat(captor.getValue().getDisplayName()).isEqualTo("harucut_20260720_100000.jpg");
             assertThat(job.getStatus()).isEqualTo(ComposeStatus.DONE);
             assertThat(job.getMediaId()).isEqualTo(42L);
             then(s3Deleter).should().deleteAfterCommit(SOURCE_KEYS);

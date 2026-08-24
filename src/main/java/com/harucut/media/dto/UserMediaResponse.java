@@ -12,10 +12,10 @@ public record UserMediaResponse(
         Long mediaId,
 
         @Schema(description = "S3 key. **이 값으로 이미지를 직접 가져올 수는 없다**(버킷이 비공개)",
-                example = "uploads/users/AbCdEf12Gh/fourcuts/job-12.png")
+                example = "uploads/users/AbCdEf12Gh/fourcuts/job-12.jpg")
         String s3Key,
 
-        @Schema(description = "표시용 파일명. 다운로드할 때 이 이름으로 저장된다", example = "나의 기록.png")
+        @Schema(description = "표시용 파일명. 다운로드할 때 이 이름으로 저장된다", example = "나의 기록.jpg")
         String displayName,
 
         @Schema(description = """
@@ -27,13 +27,13 @@ public record UserMediaResponse(
 
         @Schema(description = """
                 **화면에 띄울 때** 쓰는 URL(`<img src>`, 크게 보기). 원본 해상도 plain GET 이다.""",
-                example = "https://harucut-bucket.s3.ap-northeast-2.amazonaws.com/.../job-12.png?X-Amz-Signature=...")
+                example = "https://harucut-bucket.s3.ap-northeast-2.amazonaws.com/.../job-12.jpg?X-Amz-Signature=...")
         String viewUrl,
 
         @Schema(description = """
                 **저장 버튼**에 쓰는 URL. `Content-Disposition: attachment` 가 붙어 있어 브라우저가
                 바로 저장한다. 한글 파일명도 깨지지 않는다. `<img src>` 에 넣지 말 것.""",
-                example = "https://harucut-bucket.s3.ap-northeast-2.amazonaws.com/.../job-12.png?response-content-disposition=attachment...")
+                example = "https://harucut-bucket.s3.ap-northeast-2.amazonaws.com/.../job-12.jpg?response-content-disposition=attachment...")
         String downloadUrl,
 
         @Schema(description = "만들어진 시각. 목록은 이 값 최신순이고, 보관 기간도 이 값 기준이다",

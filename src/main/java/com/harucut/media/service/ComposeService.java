@@ -151,8 +151,13 @@ public class ComposeService {
 
     // 결과물 저장 포맷의 유일한 출처. 키 확장자와 Lambda로 보내는 지시가 **둘 다 여기서** 나온다.
     // 나뉘어 있으면 한쪽만 바꾸는 실수가 .jpg 안에 PNG 바이트를 넣고, 그건 S3에 올라간 뒤에야 보인다.
-    // 여기를 JPEG로 바꾸는 것이 곧 전환이다 (그때 Lambda를 먼저 배포해야 한다)
-    static final ImageFormat RESULT_FORMAT = ImageFormat.PNG;
+    //
+    // JPEG인 근거는 docs/perf-10k-dau.md §3 — 결과물은 투명 픽셀이 없는 사진이라 PNG의
+    // 강점(무손실·알파)을 못 쓰면서 크기만 9~10배였다(실측 GRID 25.5MB → 2.5MB).
+    // 기존 .png 결과물은 그대로 둔다 — 읽기 경로에 확장자 가정이 없어 섞여도 동작한다.
+    // ⚠️ 이 값을 바꾸는 커밋은 Lambda 선배포가 전제다 — 옛 Lambda는 outputFormat을 몰라
+    //    PNG로 그리므로, 서버가 먼저 나가면 .jpg 키에 PNG 바이트가 들어간다
+    static final ImageFormat RESULT_FORMAT = ImageFormat.JPEG;
 
     // Job당 결정적 결과 key — 재실행이 겹쳐도 같은 객체를 덮어쓰므로 고아 파일이 안 생기고,
     // UserMedia의 s3Key unique가 중복 행의 최종 방어선이 된다
