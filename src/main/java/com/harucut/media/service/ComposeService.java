@@ -8,6 +8,7 @@ import com.harucut.media.compose.ComposeMetrics;
 import com.harucut.media.compose.ComposeRequestedEvent;
 import com.harucut.media.compose.ComposeSpec;
 import com.harucut.media.compose.ComposeSpecAssembler;
+import com.harucut.media.compose.ImageFormat;
 import com.harucut.media.dto.ComposeJobResponse;
 import com.harucut.media.dto.ComposeRequest;
 import com.harucut.media.entity.ComposeJob;
@@ -76,7 +77,8 @@ public class ComposeService {
         // 아직 안 보이는 Job을 상대로 결과를 기록하려다 실패한다
         eventPublisher.publishEvent(new ComposeRequestedEvent(
                 job.getId(), spec, job.sourceKeys(),
-                resultKeyFor(publicId, job.getId()), thumbnailKeyFor(publicId, job.getId())));
+                resultKeyFor(publicId, job.getId()), thumbnailKeyFor(publicId, job.getId()),
+                RESULT_FORMAT));
         composeMetrics.requestAccepted();
         return ComposeJobResponse.from(job);
     }
@@ -141,15 +143,21 @@ public class ComposeService {
                     String publicId = job.getUser().getPublicId();
                     return new ComposeRequestedEvent(job.getId(), job.getSpec(), job.sourceKeys(),
                             resultKeyFor(publicId, job.getId()),
-                            thumbnailKeyFor(publicId, job.getId()));
+                            thumbnailKeyFor(publicId, job.getId()),
+                            RESULT_FORMAT);
                 })
                 .toList();
     }
 
+    // 결과물 저장 포맷의 유일한 출처. 키 확장자와 Lambda로 보내는 지시가 **둘 다 여기서** 나온다.
+    // 나뉘어 있으면 한쪽만 바꾸는 실수가 .jpg 안에 PNG 바이트를 넣고, 그건 S3에 올라간 뒤에야 보인다.
+    // 여기를 JPEG로 바꾸는 것이 곧 전환이다 (그때 Lambda를 먼저 배포해야 한다)
+    static final ImageFormat RESULT_FORMAT = ImageFormat.PNG;
+
     // Job당 결정적 결과 key — 재실행이 겹쳐도 같은 객체를 덮어쓰므로 고아 파일이 안 생기고,
     // UserMedia의 s3Key unique가 중복 행의 최종 방어선이 된다
     static String resultKeyFor(String publicId, Long jobId) {
-        return S3Keys.userRoot(publicId) + "fourcuts/job-" + jobId + ".png";
+        return S3Keys.userRoot(publicId) + "fourcuts/job-" + jobId + "." + RESULT_FORMAT.extension();
     }
 
     // 썸네일도 같은 원칙의 결정적 key — 원본 옆에서 함께 살고 함께 지워진다

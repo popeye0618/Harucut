@@ -46,9 +46,12 @@ public class LambdaComposeExecutor implements ComposeExecutor {
 
     @Override
     public void execute(ComposeRequestedEvent event) {
+        // 포맷을 여기서 정하지 않고 이벤트에 실려 온 값을 그대로 넘긴다 —
+        // resultKey를 만든 곳(ComposeService.RESULT_FORMAT)과 같은 값이어야 하는데,
+        // 실행기가 자기 판단으로 고르면 그 보장이 사라진다
         String payload = objectMapper.writeValueAsString(new ComposeLambdaPayload(
                 bucket, event.jobId(), event.spec(), event.sourceKeys(),
-                event.resultKey(), event.thumbnailKey()));
+                event.resultKey(), event.thumbnailKey(), event.outputFormat()));
 
         InvokeResponse response = lambdaClient.invoke(InvokeRequest.builder()
                 .functionName(functionName)

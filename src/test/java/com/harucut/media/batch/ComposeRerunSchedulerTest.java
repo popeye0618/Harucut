@@ -4,6 +4,7 @@ import com.harucut.media.compose.ComposeMetrics;
 import com.harucut.media.compose.ComposeRequestedEvent;
 import com.harucut.media.compose.ComposeSpec;
 import com.harucut.media.compose.ComposeWorker;
+import com.harucut.media.compose.ImageFormat;
 import com.harucut.media.service.ComposeService;
 import com.harucut.frame.attributes.BackgroundAttributes;
 import com.harucut.frame.enums.FrameType;
@@ -125,7 +126,8 @@ class ComposeRerunSchedulerTest {
                         "uploads/users/abc/fourcuts/sources/3.png",
                         "uploads/users/abc/fourcuts/sources/4.png"),
                 "uploads/users/abc/fourcuts/job-" + jobId + ".png",
-                "uploads/users/abc/fourcuts/job-" + jobId + "-thumb.jpg");
+                "uploads/users/abc/fourcuts/job-" + jobId + "-thumb.jpg",
+                ImageFormat.PNG);
     }
 
     private static ComposeSpec spec() {

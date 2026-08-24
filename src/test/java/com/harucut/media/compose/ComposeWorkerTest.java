@@ -140,6 +140,6 @@ class ComposeWorkerTest {
                 new ComposeSpec(2000, 6000, new BackgroundAttributes.Color("#FFF"),
                         FrameType.CLASSIC.getLayout().slots(),
                         List.of(false, false, false, false), List.of()),
-                SOURCE_KEYS, RESULT_KEY, THUMB_KEY);
+                SOURCE_KEYS, RESULT_KEY, THUMB_KEY, ImageFormat.PNG);
     }
 }

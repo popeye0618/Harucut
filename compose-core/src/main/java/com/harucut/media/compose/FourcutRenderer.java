@@ -32,7 +32,9 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
-// 스펙과 이미지 바이트를 받아 완성된 네컷 PNG를 만드는 순수 그리기 부품.
+// 스펙과 이미지 바이트를 받아 완성된 네컷을 만드는 순수 그리기 부품.
+// 저장 포맷은 호출자가 정한다(ImageFormat) — 렌더러가 포맷을 고르면 서버가 만드는
+// key 확장자와 어긋날 수 있고, 그 어긋남은 S3에 올라간 뒤에야 드러난다.
 // S3를 모른다 — 이미지 가져오기(다운로드)와 결과 내보내기(업로드)는 호출자 몫이다.
 // 그래서 픽셀 테스트가 S3 없이 돌고, 이 코드가 그대로 Lambda 함수 안으로 들어간다.
 // 수식·순서·상수는 프론트 composeFrame.ts(drawFrameOnce)와 1:1이다 —
@@ -57,9 +59,29 @@ public class FourcutRenderer {
     private static final int THUMBNAIL_LONG_EDGE = 512;
     private static final float THUMBNAIL_JPEG_QUALITY = 0.8f;
 
-    public RenderResult render(ComposeSpec spec, List<byte[]> sourcePhotos, Map<String, byte[]> assets) {
+    // 원본 JPEG 품질. 썸네일과 다른 값인 것이 요점이다 — 원본은 사용자가 크게 보고 인화까지 한다.
+    // 0.90인 근거는 실측 두 축이 같은 곳을 가리켰기 때문이다 (docs/perf-10k-dau.md §3.4·3.5):
+    //   돈 — q0.85로 더 아끼는 건 월 $87로 전체 절감액의 2%뿐이다
+    //   눈 — q0.85는 누끼 링·구운 텍스트에서 차이가 보이고, q0.95는 0.90과 구분이 안 된다
+    // 크기 증가율도 q0.85→0.90이 +25%인데 q0.90→0.95는 +45%로 튄다.
+    private static final float RESULT_JPEG_QUALITY = 0.90f;
+
+    public RenderResult render(ComposeSpec spec, List<byte[]> sourcePhotos,
+                               Map<String, byte[]> assets, ImageFormat format) {
         BufferedImage canvas = draw(spec, sourcePhotos, assets);
-        return new RenderResult(encodePng(canvas), encodeThumbnail(canvas));
+        return new RenderResult(encodeFull(canvas, format), encodeThumbnail(canvas));
+    }
+
+    // 기본값을 두지 않는다 — 호출부가 포맷을 말하게 강제한다.
+    // 기본값이 있으면 "안 정한 것"과 "PNG로 정한 것"이 구분되지 않고,
+    // 서버·Lambda 어느 한쪽이 포맷을 안 넘기는 실수가 조용히 통과한다
+    private static byte[] encodeFull(BufferedImage canvas, ImageFormat format) {
+        return switch (format) {
+            case PNG -> encodePng(canvas);
+            // JPEG는 알파를 못 다룬다 — ARGB 캔버스를 그대로 넣으면 색이 깨진다.
+            // 실측 55ms(4000×6000)로 JPEG가 버는 시간의 2%라 이득 계산에 영향 없다
+            case JPEG -> encodeJpeg(toRgb(canvas), RESULT_JPEG_QUALITY);
+        };
     }
 
     // 그리기만 — 인코딩과 분리해 둔다. 같은 캔버스를 포맷 여러 벌로 인코딩해 비교하려면

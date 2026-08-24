@@ -78,7 +78,8 @@ class ComposeClaimTransactionTest {
     private ComposeRequestedEvent eventFor(Long jobId) {
         return new ComposeRequestedEvent(jobId, spec(), SOURCE_KEYS,
                 PUBLIC_ROOT + "fourcuts/job-" + jobId + ".png",
-                PUBLIC_ROOT + "fourcuts/job-" + jobId + "-thumb.jpg");
+                PUBLIC_ROOT + "fourcuts/job-" + jobId + "-thumb.jpg",
+                ImageFormat.PNG);
     }
 
     @Test

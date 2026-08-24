@@ -4,6 +4,7 @@ import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestStreamHandler;
 import com.harucut.media.compose.ComposeLambdaPayload;
 import com.harucut.media.compose.FourcutRenderer;
+import com.harucut.media.compose.ImageFormat;
 import com.harucut.media.compose.RenderResult;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -55,12 +56,19 @@ public class ComposeHandler implements RequestStreamHandler {
             assets.put(key, download(payload.bucket(), key));
         }
 
-        RenderResult result = renderer.render(payload.spec(), sources, assets);
+        // outputFormat 없는 payload = 포맷 도입 전 서버 — PNG로 떨어진다.
+        // 이 관용이 Lambda 선배포를 안전하게 만든다 (ComposeLambdaPayload 주석 참고)
+        ImageFormat format =
+                payload.outputFormat() == null ? ImageFormat.PNG : payload.outputFormat();
 
+        RenderResult result = renderer.render(payload.spec(), sources, assets, format);
+
+        // contentType을 문자열로 적지 않는다 — 확장자를 정하는 서버와 값이 갈리면
+        // .jpg 파일이 image/png로 올라가고, 그건 S3에 올라간 뒤에야 드러난다
         s3Client.putObject(PutObjectRequest.builder()
                         .bucket(payload.bucket()).key(payload.resultKey())
-                        .contentType("image/png").build(),
-                RequestBody.fromBytes(result.fullPng()));
+                        .contentType(format.mimeType()).build(),
+                RequestBody.fromBytes(result.full()));
 
         // thumbnailKey 없는 payload = 썸네일 도입 전 서버 — 원본만 올리고 조용히 지나간다.
         // 이 관용 덕에 Lambda를 서버보다 먼저 배포해도 안전하다

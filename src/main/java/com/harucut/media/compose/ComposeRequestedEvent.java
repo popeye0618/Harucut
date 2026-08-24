@@ -9,6 +9,11 @@ public record ComposeRequestedEvent(
         ComposeSpec spec,
         List<String> sourceKeys,
         String resultKey,
-        String thumbnailKey
+        String thumbnailKey,
+
+        // resultKey와 **같이** 실려 다닌다. 둘을 떼어 놓으면 키는 .jpg인데 내용은 PNG인
+        // 상태가 만들어지고, 그건 컴파일에도 테스트에도 안 잡힌다.
+        // 한 곳(ComposeService.RESULT_FORMAT)에서 둘 다 파생시켜 어긋날 창을 없앤다
+        ImageFormat outputFormat
 ) {
 }

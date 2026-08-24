@@ -4,6 +4,7 @@ import com.harucut.frame.attributes.BackgroundAttributes;
 import com.harucut.frame.layout.FrameLayout.Slot;
 import com.harucut.media.compose.ComposeLambdaPayload;
 import com.harucut.media.compose.ComposeSpec;
+import com.harucut.media.compose.ImageFormat;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -65,7 +66,8 @@ class ComposeHandlerTest {
                         GetObjectResponse.builder().build(), solidPng(10, 10, Color.RED)));
         ByteArrayOutputStream output = new ByteArrayOutputStream();
 
-        new ComposeHandler(s3Client).handleRequest(payloadStream(spec), output, null);
+        new ComposeHandler(s3Client).handleRequest(
+                payloadStream(spec, ImageFormat.PNG), output, null);
 
         ArgumentCaptor<PutObjectRequest> requestCaptor = ArgumentCaptor.captor();
         ArgumentCaptor<RequestBody> bodyCaptor = ArgumentCaptor.captor();
@@ -86,6 +88,54 @@ class ComposeHandlerTest {
                 bodyCaptor.getAllValues().get(1).contentStreamProvider().newStream());
         assertThat(thumb.getWidth()).isEqualTo(40);
         assertThat(output.toString(StandardCharsets.UTF_8)).isEqualTo("{\"ok\":true}");
+    }
+
+    @Test
+    @DisplayName("JPEG 를 지시하면 바이트도 contentType 도 JPEG 다 — 셋이 어긋나면 안 된다")
+    void honoursJpegOutputFormat() throws IOException {
+        ComposeSpec spec = new ComposeSpec(40, 40,
+                new BackgroundAttributes.Color("#FFFFFF"),
+                fourSlots(), List.of(false, false, false, false), List.of());
+        given(s3Client.getObjectAsBytes(any(GetObjectRequest.class)))
+                .willReturn(ResponseBytes.fromByteArray(
+                        GetObjectResponse.builder().build(), solidPng(10, 10, Color.RED)));
+
+        new ComposeHandler(s3Client).handleRequest(
+                payloadStream(spec, ImageFormat.JPEG), new ByteArrayOutputStream(), null);
+
+        ArgumentCaptor<PutObjectRequest> requestCaptor = ArgumentCaptor.captor();
+        ArgumentCaptor<RequestBody> bodyCaptor = ArgumentCaptor.captor();
+        then(s3Client).should(times(2)).putObject(requestCaptor.capture(), bodyCaptor.capture());
+        assertThat(requestCaptor.getAllValues().get(0).contentType()).isEqualTo("image/jpeg");
+        assertThat(magic(bodyCaptor.getAllValues().get(0))).isEqualTo(JPEG_MAGIC);
+        // 썸네일은 포맷 지시와 무관하게 늘 JPEG 다 — 목록 그리드 전용이라 고를 이유가 없다
+        assertThat(requestCaptor.getAllValues().get(1).contentType()).isEqualTo("image/jpeg");
+    }
+
+    @Test
+    @DisplayName("outputFormat 없는 옛 payload는 PNG 로 떨어진다 — Lambda 선배포 안전장치")
+    void legacyPayloadWithoutOutputFormat() throws IOException {
+        ComposeSpec spec = new ComposeSpec(40, 40,
+                new BackgroundAttributes.Color("#FFFFFF"),
+                fourSlots(), List.of(false, false, false, false), List.of());
+        given(s3Client.getObjectAsBytes(any(GetObjectRequest.class)))
+                .willReturn(ResponseBytes.fromByteArray(
+                        GetObjectResponse.builder().build(), solidPng(10, 10, Color.RED)));
+        // 필드 자체가 없는 JSON — 포맷 도입 전 서버의 wire 포맷 그대로.
+        // 이게 깨지면 옛 서버가 보낸 .png 키에 JPEG 바이트가 들어간다
+        String legacyJson = MAPPER.writeValueAsString(Map.of(
+                "bucket", BUCKET, "spec", spec, "sourceKeys", SOURCE_KEYS,
+                "resultKey", RESULT_KEY, "thumbnailKey", THUMB_KEY));
+
+        new ComposeHandler(s3Client).handleRequest(
+                new ByteArrayInputStream(legacyJson.getBytes(StandardCharsets.UTF_8)),
+                new ByteArrayOutputStream(), null);
+
+        ArgumentCaptor<PutObjectRequest> requestCaptor = ArgumentCaptor.captor();
+        ArgumentCaptor<RequestBody> bodyCaptor = ArgumentCaptor.captor();
+        then(s3Client).should(times(2)).putObject(requestCaptor.capture(), bodyCaptor.capture());
+        assertThat(requestCaptor.getAllValues().get(0).contentType()).isEqualTo("image/png");
+        assertThat(magic(bodyCaptor.getAllValues().get(0))).isEqualTo(PNG_MAGIC);
     }
 
     @Test
@@ -148,7 +198,7 @@ class ComposeHandlerTest {
                         GetObjectResponse.builder().build(), solidPng(10, 10, Color.RED)));
 
         new ComposeHandler(s3Client).handleRequest(
-                payloadStream(spec), new ByteArrayOutputStream(), null);
+                payloadStream(spec, ImageFormat.PNG), new ByteArrayOutputStream(), null);
 
         ArgumentCaptor<GetObjectRequest> captor = ArgumentCaptor.captor();
         then(s3Client).should(times(6)).getObjectAsBytes(captor.capture());
@@ -161,11 +211,23 @@ class ComposeHandlerTest {
 
     // ── fixtures ──────────────────────────────
 
-    private static ByteArrayInputStream payloadStream(ComposeSpec spec) {
-        String json = MAPPER.writeValueAsString(
-                new ComposeLambdaPayload(BUCKET, JOB_ID, spec, SOURCE_KEYS, RESULT_KEY, THUMB_KEY));
+    private static ByteArrayInputStream payloadStream(ComposeSpec spec, ImageFormat format) {
+        String json = MAPPER.writeValueAsString(new ComposeLambdaPayload(
+                BUCKET, JOB_ID, spec, SOURCE_KEYS, RESULT_KEY, THUMB_KEY, format));
         return new ByteArrayInputStream(json.getBytes(StandardCharsets.UTF_8));
     }
+
+    // 확장자·contentType 이 아니라 바이트 자체를 본다 — 셋이 어긋나는 게 정확히 우리가 막으려는 사고다
+    private static byte[] magic(RequestBody body) {
+        try (var stream = body.contentStreamProvider().newStream()) {
+            return stream.readNBytes(4);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    private static final byte[] PNG_MAGIC = {(byte) 0x89, 'P', 'N', 'G'};
+    private static final byte[] JPEG_MAGIC = {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE0};
 
     private static List<Slot> fourSlots() {
         return List.of(new Slot(0, 0, 10, 10), new Slot(10, 0, 10, 10),
