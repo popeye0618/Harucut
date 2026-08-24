@@ -4,6 +4,14 @@
 루트의 `docker-compose.yml` 에도 같은 이름의 서비스가 있지만 그쪽은 부하 테스트용이고,
 이 폴더의 `docker-compose.view.yml` 은 **결과를 조회하기 위한 것**이다. 포트만 다르다.
 
+## 함께 보기
+
+| 문서 | 목적 |
+|---|---|
+| [01-test-targets.md](01-test-targets.md) | 부하 테스트 대상 8개 — 코드 상태, 재현 방법, 실측 결과 |
+| [02-environment.md](02-environment.md) | 부하 테스트 환경 설계 근거 (컨테이너 vs 로컬/EC2, 부하 프로파일) |
+| [03-grafana.md](03-grafana.md) | Grafana 대시보드·PromQL 가이드 |
+
 ## 실행
 
 ```bash
