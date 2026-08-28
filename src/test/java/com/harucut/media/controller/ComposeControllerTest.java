@@ -118,6 +118,53 @@ class ComposeControllerTest extends SecurityBeansMockSupport {
         then(composeService).shouldHaveNoInteractions();
     }
 
+    // 형식을 DTO에서 막는 이유: 렌더러의 parseHexColor는 잘못된 값을 조용히 기본색으로
+    // 바꿔 그리므로, 여기서 안 걸리면 오류가 400이 아니라 엉뚱한 색 결과물로 나타난다
+    @Test
+    @DisplayName("배경색 형식이 #RRGGBB가 아니면 400 GEN-003이고 서비스까지 가지 않는다")
+    void malformedBackgroundColorRejected() {
+        String body = """
+                {
+                  "frameId": 7,
+                  "sourceKeys": ["uploads/u/1.jpg", "uploads/u/2.jpg", "uploads/u/3.jpg", "uploads/u/4.jpg"],
+                  "idempotencyKey": "b7e2c1d0-idem",
+                  "backgroundColor": "red"
+                }
+                """;
+
+        assertThat(mockMvc.post().uri(BASE_URI)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body)
+                .cookie(accessCookie()))
+                .hasStatus(HttpStatus.BAD_REQUEST)
+                .bodyJson()
+                .hasPathSatisfying("$.code", code -> assertThat(code).isEqualTo("GEN-003"));
+
+        then(composeService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("배경색이 #RRGGBB면 202로 접수된다")
+    void validBackgroundColorAccepted() {
+        given(composeService.requestCompose(eq(PUBLIC_ID), any()))
+                .willReturn(new ComposeJobResponse(5L, ComposeStatus.PENDING, null, null));
+
+        String body = """
+                {
+                  "frameId": 7,
+                  "sourceKeys": ["uploads/u/1.jpg", "uploads/u/2.jpg", "uploads/u/3.jpg", "uploads/u/4.jpg"],
+                  "idempotencyKey": "b7e2c1d0-idem",
+                  "backgroundColor": "#FFE4E1"
+                }
+                """;
+
+        assertThat(mockMvc.post().uri(BASE_URI)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body)
+                .cookie(accessCookie()))
+                .hasStatus(HttpStatus.ACCEPTED);
+    }
+
     @Test
     @DisplayName("폴링에서 DONE이면 mediaId가 실린다")
     void pollDoneCarriesMediaId() {

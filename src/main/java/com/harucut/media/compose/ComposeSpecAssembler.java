@@ -17,23 +17,34 @@ import java.util.List;
 @Component
 public class ComposeSpecAssembler {
 
-    public ComposeSpec assemble(Frame frame) {
+    public ComposeSpec assemble(Frame frame, String backgroundColorOverride) {
         FrameLayout layout = frame.getFrameType().getLayout();
         return new ComposeSpec(
                 layout.canvasWidth(), layout.canvasHeight(),
-                composableBackground(frame.getBackground()),
+                composableBackground(frame.getBackground(), backgroundColorOverride),
                 layout.slots(),
                 frame.getCellCutouts(),
                 frame.getComponents().stream().map(this::toLayer).toList());
     }
 
-    private BackgroundAttributes composableBackground(BackgroundAttributes background) {
-        if (background instanceof BackgroundAttributes.Image image
-                && !S3Keys.isManagedKey(image.key())) {
-            throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE,
-                    "S3에 없는 배경 이미지는 합성할 수 없다.");
+    private BackgroundAttributes composableBackground(
+            BackgroundAttributes background, String colorOverride) {
+        if (background instanceof BackgroundAttributes.Image image) {
+            if (colorOverride != null) {
+                // 이미지 배경에 색을 씌우는 건 프론트 미리보기에 없는 조합 — 조용히 무시하면
+                // 사용자는 색이 반영됐다고 믿은 채 결과를 받는다. 명시적으로 끊는다
+                throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE,
+                        "이미지 배경 프레임에는 배경색을 지정할 수 없다.");
+            }
+            if (!S3Keys.isManagedKey(image.key())) {
+                throw new BusinessException(GlobalErrorCode.INVALID_INPUT_VALUE,
+                        "S3에 없는 배경 이미지는 합성할 수 없다.");
+            }
+            return background;
         }
-        return background;
+        return colorOverride == null
+                ? background
+                : new BackgroundAttributes.Color(colorOverride);
     }
 
     private ComposeSpec.Layer toLayer(FrameComponent component) {

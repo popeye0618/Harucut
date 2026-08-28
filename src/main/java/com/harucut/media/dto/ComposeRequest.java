@@ -3,6 +3,7 @@ package com.harucut.media.dto;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 import java.util.List;
@@ -42,6 +43,21 @@ public record ComposeRequest(
                 (더블클릭도 여기서 걸린다).""",
                 example = "550e8400-e29b-41d4-a716-446655440000",
                 requiredMode = Schema.RequiredMode.REQUIRED)
-        String idempotencyKey
+        String idempotencyKey,
+
+        // @Pattern은 null을 통과시킨다 — 그게 이 필드의 선택 규약이다.
+        // DTO에서 형식을 막는 이유: 렌더러의 parseHexColor가 잘못된 값을 조용히
+        // 기본색(#23262D)으로 바꿔 그리므로, 여기서 안 막으면 오류가 결과물로만 나타난다
+        @Pattern(regexp = "^#[0-9a-fA-F]{6}$")
+        @Schema(description = """
+                배경색 덮어쓰기 (선택). `#RRGGBB` 형식.
+
+                **단색(COLOR) 배경 프레임에서만 쓸 수 있다** — 이미지 배경 프레임에 보내면 400 이다.
+                생략하면 프레임에 저장된 배경 그대로 합성한다.
+
+                ⚠️ 같은 `idempotencyKey` 로 색만 바꿔 다시 보내면 **무시된다** —
+                기존 작업이 그대로 재생되므로, 색을 바꿨으면 키도 새로 만들어야 한다.""",
+                example = "#FFE4E1")
+        String backgroundColor
 ) {
 }
