@@ -43,8 +43,9 @@ public class Frame extends BaseEntity {
     @Column(nullable = false, length = 4000)
     private BackgroundAttributes background;
 
-    // 셀 누끼(칸별 비네트 장식) 토글 — 항상 정확히 4개, 촬영 슬롯 순서.
-    // 합성기가 읽고, 편집기가 저장 프레임을 다시 열 때 토글을 복원하도록 응답에도 나간다
+    // 셀 누끼 토글 — 항상 정확히 4개, 촬영 슬롯 순서.
+    // 서버는 이 값으로 그리지 않는다(누끼는 프론트가 원본에 구워 올린다) —
+    // 편집기가 저장 프레임을 다시 열 때 토글을 복원하도록 응답에 나가는 게 남은 역할이다
     @Convert(converter = CellCutoutsConverter.class)
     @Column(name = "cell_cutouts", length = 64)
     private List<Boolean> cellCutouts;
