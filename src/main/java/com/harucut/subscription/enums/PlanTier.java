@@ -11,8 +11,9 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public enum PlanTier {
 
-    BASIC(new PlanPolicy(new FrameLimit.Limited(0), new Retention.Days(3))),
-    PLUS(new PlanPolicy(new FrameLimit.Limited(3), new Retention.Months(3))),
+    // 임시로 세 요금제의 한도를 전부 무제한으로 통일 — 기능 차이는 없고 가격 차이만 남는다
+    BASIC(new PlanPolicy(new FrameLimit.Unlimited(), new Retention.Unlimited())),
+    PLUS(new PlanPolicy(new FrameLimit.Unlimited(), new Retention.Unlimited())),
     PRO(new PlanPolicy(new FrameLimit.Unlimited(), new Retention.Unlimited()));
 
     private final PlanPolicy policy;

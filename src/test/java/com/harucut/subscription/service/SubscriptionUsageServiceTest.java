@@ -26,6 +26,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 
+// 요금제 한도 임시 통일(전부 무제한) 상태의 기대값이다.
+// 정책이 다시 갈라지면 git 이력의 이전 버전이 요금제별 시나리오 목록이다 —
+// 특히 Limited 한도의 -1 아닌 응답과 잔여 0 클램프(강등 시나리오)는 그때 되살려야 한다
 @ExtendWith(MockitoExtension.class)
 @DisplayName("SubscriptionUsageService")
 class SubscriptionUsageServiceTest {
@@ -54,65 +57,25 @@ class SubscriptionUsageServiceTest {
     }
 
     @Test
-    @DisplayName("BASIC — 한도 0, 잔여 0, 무제한 아님")
-    void basicUsage() {
-        givenTier(PlanTier.BASIC);
-        given(frameCountPort.countByUserId(USER_ID)).willReturn(0);
+    @DisplayName("모든 요금제 — 한도·잔여 -1(무제한 규약), 사용량은 실제 개수 그대로다")
+    void allTiersUnlimited() {
+        for (PlanTier tier : PlanTier.values()) {
+            givenTier(tier);
+            given(frameCountPort.countByUserId(USER_ID)).willReturn(10);
 
-        SubscriptionUsageResponse response = usageService.getUsage(PUBLIC_ID);
+            SubscriptionUsageResponse response = usageService.getUsage(PUBLIC_ID);
 
-        assertThat(response.planTier()).isEqualTo(PlanTier.BASIC);
-        assertThat(response.frameRetentionLimit()).isEqualTo(0);
-        assertThat(response.frameRetentionUsedCount()).isEqualTo(0);
-        assertThat(response.frameRetentionRemainingCount()).isEqualTo(0);
-        assertThat(response.frameRetentionUnlimited()).isFalse();
+            assertThat(response.planTier()).isEqualTo(tier);
+            assertThat(response.frameRetentionLimit()).isEqualTo(-1);
+            assertThat(response.frameRetentionUsedCount()).isEqualTo(10);
+            assertThat(response.frameRetentionRemainingCount()).isEqualTo(-1);
+            assertThat(response.frameRetentionUnlimited()).isTrue();
+        }
     }
 
     @Test
-    @DisplayName("PLUS — 한도 3에 1개 사용이면 잔여 2다")
-    void plusUsage() {
-        givenTier(PlanTier.PLUS);
-        given(frameCountPort.countByUserId(USER_ID)).willReturn(1);
-
-        SubscriptionUsageResponse response = usageService.getUsage(PUBLIC_ID);
-
-        assertThat(response.planTier()).isEqualTo(PlanTier.PLUS);
-        assertThat(response.frameRetentionLimit()).isEqualTo(3);
-        assertThat(response.frameRetentionUsedCount()).isEqualTo(1);
-        assertThat(response.frameRetentionRemainingCount()).isEqualTo(2);
-        assertThat(response.frameRetentionUnlimited()).isFalse();
-    }
-
-    @Test
-    @DisplayName("PLUS — 한도보다 많이 보유해도(강등 시나리오) 잔여는 음수가 아니라 0이다")
-    void plusOverCapClampsRemaining() {
-        givenTier(PlanTier.PLUS);
-        given(frameCountPort.countByUserId(USER_ID)).willReturn(5);
-
-        SubscriptionUsageResponse response = usageService.getUsage(PUBLIC_ID);
-
-        assertThat(response.frameRetentionUsedCount()).isEqualTo(5);
-        assertThat(response.frameRetentionRemainingCount()).isEqualTo(0);
-    }
-
-    @Test
-    @DisplayName("PRO — 한도와 잔여가 -1(무제한 규약)이고 unlimited가 true다")
-    void proUsage() {
-        givenTier(PlanTier.PRO);
-        given(frameCountPort.countByUserId(USER_ID)).willReturn(10);
-
-        SubscriptionUsageResponse response = usageService.getUsage(PUBLIC_ID);
-
-        assertThat(response.planTier()).isEqualTo(PlanTier.PRO);
-        assertThat(response.frameRetentionLimit()).isEqualTo(-1);
-        assertThat(response.frameRetentionUsedCount()).isEqualTo(10);
-        assertThat(response.frameRetentionRemainingCount()).isEqualTo(-1);
-        assertThat(response.frameRetentionUnlimited()).isTrue();
-    }
-
-    @Test
-    @DisplayName("공백기 — 주기가 끝난 PLUS는 BASIC 값(한도 0)으로 응답한다")
-    void gapPeriodShowsBasicUsage() {
+    @DisplayName("공백기 — 주기가 끝난 PLUS는 planTier가 BASIC으로 응답된다")
+    void gapPeriodShowsBasicTier() {
         UserSubscription subscription = UserSubscription.createBasic(USER_ID);
         subscription.activatePaid(PlanTier.PLUS,
                 LocalDateTime.of(2026, 7, 1, 0, 0), LocalDateTime.of(2026, 8, 1, 0, 0));
@@ -123,12 +86,11 @@ class SubscriptionUsageServiceTest {
         SubscriptionUsageResponse response = usageService.getUsage(PUBLIC_ID);
 
         assertThat(response.planTier()).isEqualTo(PlanTier.BASIC);
-        assertThat(response.frameRetentionLimit()).isEqualTo(0);
-        assertThat(response.frameRetentionRemainingCount()).isEqualTo(0);
+        assertThat(response.frameRetentionLimit()).isEqualTo(-1);
     }
 
     @Test
-    @DisplayName("구독 행이 없으면 예외가 아니라 BASIC 한도로 응답한다")
+    @DisplayName("구독 행이 없으면 예외가 아니라 BASIC으로 응답한다")
     void noSubscriptionFallsBackToBasic() {
         givenUser();
         given(userSubscriptionRepository.findByUserId(USER_ID)).willReturn(Optional.empty());
@@ -137,7 +99,7 @@ class SubscriptionUsageServiceTest {
         SubscriptionUsageResponse response = usageService.getUsage(PUBLIC_ID);
 
         assertThat(response.planTier()).isEqualTo(PlanTier.BASIC);
-        assertThat(response.frameRetentionLimit()).isEqualTo(0);
+        assertThat(response.frameRetentionLimit()).isEqualTo(-1);
     }
 
     @Test
