@@ -68,7 +68,7 @@ public class ComposeService {
         validateSourceOwnership(publicId, sourceKeys);
 
         Frame frame = frameService.getComposableFrame(user, request.frameId());
-        ComposeSpec spec = composeSpecAssembler.assemble(frame);
+        ComposeSpec spec = composeSpecAssembler.assemble(frame, request.backgroundColor());
 
         ComposeJob job = composeJobRepository.save(ComposeJob.create(
                 user, frame.getId(), request.idempotencyKey(), sourceKeys, spec));

@@ -37,7 +37,7 @@ class ComposeSpecAssemblerTest {
                     new BackgroundAttributes.Color("#FFE4E1"),
                     List.of(true, false, true, false));
 
-            ComposeSpec spec = assembler.assemble(frame);
+            ComposeSpec spec = assembler.assemble(frame, null);
 
             assertThat(spec.canvasWidth()).isEqualTo(2000);
             assertThat(spec.canvasHeight()).isEqualTo(6000);
@@ -53,7 +53,7 @@ class ComposeSpecAssemblerTest {
             frame.addComponent(component(ComponentType.STICKER, STICKER_KEY, null));
             frame.addComponent(component(ComponentType.TEXT, "봄 여행", RENDERED_KEY));
 
-            ComposeSpec spec = assembler.assemble(frame);
+            ComposeSpec spec = assembler.assemble(frame, null);
 
             assertThat(spec.layers()).extracting(ComposeSpec.Layer::source)
                     .containsExactly(PHOTO_KEY, STICKER_KEY, RENDERED_KEY);
@@ -66,7 +66,7 @@ class ComposeSpecAssemblerTest {
             frame.addComponent(FrameComponent.builder()
                     .source(PHOTO_KEY).type(ComponentType.PHOTO).build());
 
-            ComposeSpec.Layer layer = assembler.assemble(frame).layers().get(0);
+            ComposeSpec.Layer layer = assembler.assemble(frame, null).layers().get(0);
 
             assertThat(layer.width()).isZero();
             assertThat(layer.height()).isZero();
@@ -85,7 +85,7 @@ class ComposeSpecAssemblerTest {
                     .source(STICKER_KEY).type(ComponentType.STICKER)
                     .style(Map.of("opacity", 1.5)).build());
 
-            List<ComposeSpec.Layer> layers = assembler.assemble(frame).layers();
+            List<ComposeSpec.Layer> layers = assembler.assemble(frame, null).layers();
 
             assertThat(layers.get(0).opacity()).isEqualTo(0.4);
             assertThat(layers.get(1).opacity()).isEqualTo(1.0);
@@ -102,7 +102,7 @@ class ComposeSpecAssemblerTest {
             Frame frame = colorFrame();
             frame.addComponent(component(ComponentType.TEXT, "안 구운 텍스트", null));
 
-            assertThatThrownBy(() -> assembler.assemble(frame))
+            assertThatThrownBy(() -> assembler.assemble(frame, null))
                     .isInstanceOf(BusinessException.class)
                     .extracting("errorCode")
                     .isEqualTo(GlobalErrorCode.INVALID_INPUT_VALUE);
@@ -115,7 +115,7 @@ class ComposeSpecAssemblerTest {
             frame.addComponent(component(ComponentType.STICKER,
                     "https://cdn.example.com/stickers/heart.png", null));
 
-            assertThatThrownBy(() -> assembler.assemble(frame))
+            assertThatThrownBy(() -> assembler.assemble(frame, null))
                     .isInstanceOf(BusinessException.class)
                     .extracting("errorCode")
                     .isEqualTo(GlobalErrorCode.INVALID_INPUT_VALUE);
@@ -127,7 +127,7 @@ class ComposeSpecAssemblerTest {
             Frame frame = Frame.system("기본", "설명", "uploads/p.png", FrameType.CLASSIC,
                     new BackgroundAttributes.Image("https://cdn.example.com/bg.png", 0.8, null));
 
-            assertThatThrownBy(() -> assembler.assemble(frame))
+            assertThatThrownBy(() -> assembler.assemble(frame, null))
                     .isInstanceOf(BusinessException.class)
                     .extracting("errorCode")
                     .isEqualTo(GlobalErrorCode.INVALID_INPUT_VALUE);
@@ -139,10 +139,36 @@ class ComposeSpecAssemblerTest {
             Frame frame = Frame.system("기본", "설명", "uploads/p.png", FrameType.CLASSIC,
                     new BackgroundAttributes.Image("uploads/users/abc/components/bg.png", 0.8, null));
 
-            ComposeSpec spec = assembler.assemble(frame);
+            ComposeSpec spec = assembler.assemble(frame, null);
 
             assertThat(spec.background()).isEqualTo(
                     new BackgroundAttributes.Image("uploads/users/abc/components/bg.png", 0.8, null));
+        }
+    }
+
+    @Nested
+    @DisplayName("배경색 덮어쓰기")
+    class BackgroundColorOverride {
+
+        @Test
+        @DisplayName("COLOR 배경에 색을 주면 스펙의 배경이 그 색으로 바뀐다")
+        void colorBackgroundReplaced() {
+            ComposeSpec spec = assembler.assemble(colorFrame(), "#112233");
+
+            assertThat(spec.background())
+                    .isEqualTo(new BackgroundAttributes.Color("#112233"));
+        }
+
+        @Test
+        @DisplayName("IMAGE 배경 프레임에 색을 주면 GEN-002다 — 조용한 무시 금지")
+        void imageBackgroundWithColorRejected() {
+            Frame frame = Frame.system("기본", "설명", "uploads/p.png", FrameType.CLASSIC,
+                    new BackgroundAttributes.Image("uploads/users/abc/components/bg.png", 0.8, null));
+
+            assertThatThrownBy(() -> assembler.assemble(frame, "#112233"))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting("errorCode")
+                    .isEqualTo(GlobalErrorCode.INVALID_INPUT_VALUE);
         }
     }
 

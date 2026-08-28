@@ -111,7 +111,7 @@ class ComposeServiceTest {
             Frame frame = frame();
             given(frameService.getComposableFrame(user, FRAME_ID)).willReturn(frame);
             ComposeSpec spec = spec();
-            given(composeSpecAssembler.assemble(frame)).willReturn(spec);
+            given(composeSpecAssembler.assemble(frame, null)).willReturn(spec);
             given(composeJobRepository.save(any())).willAnswer(invocation -> {
                 ComposeJob job = invocation.getArgument(0);
                 ReflectionTestUtils.setField(job, "id", JOB_ID);
@@ -141,7 +141,7 @@ class ComposeServiceTest {
                     .willReturn(Optional.empty());
             Frame frame = frame();
             given(frameService.getComposableFrame(user, FRAME_ID)).willReturn(frame);
-            given(composeSpecAssembler.assemble(frame)).willReturn(spec());
+            given(composeSpecAssembler.assemble(frame, null)).willReturn(spec());
             given(composeJobRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
             List<String> urls = SOURCE_KEYS.stream()
                     .map(key -> "https://harucut-test.s3.amazonaws.com/" + key + "?X-Amz-Signature=x")
@@ -343,7 +343,7 @@ class ComposeServiceTest {
     }
 
     private static ComposeRequest request(List<String> sourceKeys) {
-        return new ComposeRequest(FRAME_ID, sourceKeys, IDEM_KEY);
+        return new ComposeRequest(FRAME_ID, sourceKeys, IDEM_KEY, null);
     }
 
     private Frame frame() {
