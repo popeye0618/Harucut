@@ -1,9 +1,7 @@
 package com.harucut.subscription.service;
 
-import com.harucut.common.exception.BusinessException;
 import com.harucut.subscription.entity.UserSubscription;
 import com.harucut.subscription.enums.PlanTier;
-import com.harucut.subscription.exception.SubscriptionErrorCode;
 import com.harucut.subscription.repository.UserSubscriptionRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -21,6 +19,10 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.BDDMockito.given;
 
+// 요금제 한도 임시 통일(전부 무제한) 상태의 기대값이다.
+// 정책이 다시 갈라지면 git 이력의 이전 버전이 요금제별 시나리오 목록이다 —
+// SUBS-003(보관 한도 초과)·SUBS-002(내역 기간 초과) throw 경로는 지금 어떤 요금제로도
+// 도달할 수 없어 커버리지를 잃은 상태고, 그때 반드시 되살려야 한다
 @ExtendWith(MockitoExtension.class)
 class SubscriptionPolicyServiceTest {
 
@@ -44,43 +46,15 @@ class SubscriptionPolicyServiceTest {
     class AssertFrameRetentionLimit {
 
         @Test
-        @DisplayName("BASIC은 0개 보유 상태에서도 생성이 거부된다 — SUBS-003")
-        void basicCannotCreateAtAll() {
-            givenTier(PlanTier.BASIC);
+        @DisplayName("모든 요금제가 몇 개를 보유해도 허용된다")
+        void allTiersAlwaysAllow() {
+            for (PlanTier tier : PlanTier.values()) {
+                givenTier(tier);
 
-            assertThatThrownBy(() -> policyService.assertFrameRetentionLimit(USER_ID, 0))
-                    .isInstanceOf(BusinessException.class)
-                    .extracting("errorCode")
-                    .isEqualTo(SubscriptionErrorCode.PLAN_FRAME_RETENTION_EXCEEDED);
-        }
-
-        @Test
-        @DisplayName("PLUS는 2개 보유 상태에서 3번째 생성이 허용된다")
-        void plusAllowsThirdFrame() {
-            givenTier(PlanTier.PLUS);
-
-            assertThatCode(() -> policyService.assertFrameRetentionLimit(USER_ID, 2))
-                    .doesNotThrowAnyException();
-        }
-
-        @Test
-        @DisplayName("PLUS는 3개 보유 상태에서 4번째 생성이 거부된다 — 경계")
-        void plusRejectsFourthFrame() {
-            givenTier(PlanTier.PLUS);
-
-            assertThatThrownBy(() -> policyService.assertFrameRetentionLimit(USER_ID, 3))
-                    .isInstanceOf(BusinessException.class)
-                    .extracting("errorCode")
-                    .isEqualTo(SubscriptionErrorCode.PLAN_FRAME_RETENTION_EXCEEDED);
-        }
-
-        @Test
-        @DisplayName("PRO는 몇 개를 보유해도 허용된다")
-        void proAlwaysAllows() {
-            givenTier(PlanTier.PRO);
-
-            assertThatCode(() -> policyService.assertFrameRetentionLimit(USER_ID, Integer.MAX_VALUE))
-                    .doesNotThrowAnyException();
+                assertThatCode(() ->
+                        policyService.assertFrameRetentionLimit(USER_ID, Integer.MAX_VALUE))
+                        .doesNotThrowAnyException();
+            }
         }
     }
 
@@ -89,53 +63,28 @@ class SubscriptionPolicyServiceTest {
     class ResolveFrameRetentionCap {
 
         @Test
-        @DisplayName("BASIC은 0, PLUS는 3이다")
-        void limitedTiersReturnCap() {
-            givenTier(PlanTier.BASIC);
-            assertThat(policyService.resolveFrameRetentionCap(USER_ID)).isEqualTo(0);
+        @DisplayName("모든 요금제가 무제한이라 null이다")
+        void allTiersReturnNull() {
+            for (PlanTier tier : PlanTier.values()) {
+                givenTier(tier);
 
-            givenTier(PlanTier.PLUS);
-            assertThat(policyService.resolveFrameRetentionCap(USER_ID)).isEqualTo(3);
-        }
-
-        @Test
-        @DisplayName("PRO는 무제한이라 null이다")
-        void unlimitedReturnsNull() {
-            givenTier(PlanTier.PRO);
-
-            assertThat(policyService.resolveFrameRetentionCap(USER_ID)).isNull();
+                assertThat(policyService.resolveFrameRetentionCap(USER_ID)).isNull();
+            }
         }
     }
-
 
     @Nested
     @DisplayName("resolveHistoryCutoff")
     class ResolveHistoryCutoff {
 
         @Test
-        @DisplayName("BASIC의 cutoff는 3일 전이다")
-        void basicCutoff() {
-            givenTier(PlanTier.BASIC);
+        @DisplayName("모든 요금제가 cutoff 없음 — null")
+        void allTiersReturnNull() {
+            for (PlanTier tier : PlanTier.values()) {
+                givenTier(tier);
 
-            assertThat(policyService.resolveHistoryCutoff(USER_ID))
-                    .isEqualTo(LocalDateTime.of(2026, 8, 13, 12, 0));
-        }
-
-        @Test
-        @DisplayName("PLUS의 cutoff는 달력 기준 3개월 전이다")
-        void plusCutoff() {
-            givenTier(PlanTier.PLUS);
-
-            assertThat(policyService.resolveHistoryCutoff(USER_ID))
-                    .isEqualTo(LocalDateTime.of(2026, 5, 16, 12, 0));
-        }
-
-        @Test
-        @DisplayName("PRO는 cutoff가 없다 — null")
-        void proCutoff() {
-            givenTier(PlanTier.PRO);
-
-            assertThat(policyService.resolveHistoryCutoff(USER_ID)).isNull();
+                assertThat(policyService.resolveHistoryCutoff(USER_ID)).isNull();
+            }
         }
     }
 
@@ -144,35 +93,15 @@ class SubscriptionPolicyServiceTest {
     class AssertHistoryAccessible {
 
         @Test
-        @DisplayName("정확히 cutoff 시각에 만든 내역은 접근할 수 있다 — 경계 포함")
-        void exactlyAtCutoffIsAccessible() {
-            givenTier(PlanTier.PLUS);
+        @DisplayName("아무리 오래된 내역도 모든 요금제에서 접근할 수 있다")
+        void anyTierAccessesAnything() {
+            for (PlanTier tier : PlanTier.values()) {
+                givenTier(tier);
 
-            assertThatCode(() -> policyService.assertHistoryAccessible(
-                    USER_ID, LocalDateTime.of(2026, 5, 16, 12, 0)))
-                    .doesNotThrowAnyException();
-        }
-
-        @Test
-        @DisplayName("cutoff보다 오래된 내역은 SUBS-002다")
-        void olderThanCutoffIsRejected() {
-            givenTier(PlanTier.PLUS);
-
-            assertThatThrownBy(() -> policyService.assertHistoryAccessible(
-                    USER_ID, LocalDateTime.of(2026, 5, 16, 11, 59, 59)))
-                    .isInstanceOf(BusinessException.class)
-                    .extracting("errorCode")
-                    .isEqualTo(SubscriptionErrorCode.PLAN_HISTORY_RETENTION_EXCEEDED);
-        }
-
-        @Test
-        @DisplayName("PRO는 아무리 오래된 내역도 접근할 수 있다")
-        void proAccessesAnything() {
-            givenTier(PlanTier.PRO);
-
-            assertThatCode(() -> policyService.assertHistoryAccessible(
-                    USER_ID, NOW.minusYears(10)))
-                    .doesNotThrowAnyException();
+                assertThatCode(() -> policyService.assertHistoryAccessible(
+                        USER_ID, NOW.minusYears(10)))
+                        .doesNotThrowAnyException();
+            }
         }
 
         @Test
@@ -186,31 +115,19 @@ class SubscriptionPolicyServiceTest {
     }
 
     @Nested
-    @DisplayName("구독이 없거나 만료된 경우")
+    @DisplayName("구독이 없는 경우")
     class Fallback {
 
+        // 만료된 PLUS → BASIC 강등(effectiveTier)은 정책이 전부 같아진 지금 여기서는
+        // 관측할 수 없다 — UserSubscriptionTest가 tier 판정 자체를 커버한다
         @Test
         @DisplayName("구독 행이 없으면 예외가 아니라 BASIC 정책으로 판정한다")
         void noSubscriptionFallsBackToBasic() {
             given(userSubscriptionRepository.findByUserId(USER_ID)).willReturn(Optional.empty());
 
-            assertThat(policyService.resolveHistoryCutoff(USER_ID))
-                    .isEqualTo(LocalDateTime.of(2026, 8, 13, 12, 0));
-            assertThatThrownBy(() -> policyService.assertFrameRetentionLimit(USER_ID, 0))
-                    .isInstanceOf(BusinessException.class);
-        }
-
-        @Test
-        @DisplayName("공백기 — 주기가 끝난 PLUS는 배치 전이라도 BASIC 정책으로 판정한다")
-        void expiredPlusIsJudgedAsBasic() {
-            UserSubscription subscription = UserSubscription.createBasic(USER_ID);
-            subscription.activatePaid(PlanTier.PLUS,
-                    LocalDateTime.of(2026, 7, 1, 0, 0), LocalDateTime.of(2026, 8, 1, 0, 0));
-            given(userSubscriptionRepository.findByUserId(USER_ID)).willReturn(Optional.of(subscription));
-
-            // PLUS였다면 5/16이 나와야 하지만, effectiveTier가 BASIC으로 떨어져 3일 전이 나온다
-            assertThat(policyService.resolveHistoryCutoff(USER_ID))
-                    .isEqualTo(LocalDateTime.of(2026, 8, 13, 12, 0));
+            assertThat(policyService.resolveHistoryCutoff(USER_ID)).isNull();
+            assertThatCode(() -> policyService.assertFrameRetentionLimit(USER_ID, 0))
+                    .doesNotThrowAnyException();
         }
     }
 

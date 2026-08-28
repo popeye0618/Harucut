@@ -11,17 +11,17 @@ import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 class PlanTierTest {
 
     @Test
-    @DisplayName("BASIC — 프레임 보관 불가, 내역 3일")
+    @DisplayName("BASIC — 전부 무제한 (임시 통일)")
     void basicPolicy() {
         assertThat(PlanTier.BASIC.getPolicy())
-                .isEqualTo(new PlanPolicy(new FrameLimit.Limited(0), new Retention.Days(3)));
+                .isEqualTo(new PlanPolicy(new FrameLimit.Unlimited(), new Retention.Unlimited()));
     }
 
     @Test
-    @DisplayName("PLUS — 프레임 3개, 내역 3개월")
+    @DisplayName("PLUS — 전부 무제한 (임시 통일)")
     void plusPolicy() {
         assertThat(PlanTier.PLUS.getPolicy())
-                .isEqualTo(new PlanPolicy(new FrameLimit.Limited(3), new Retention.Months(3)));
+                .isEqualTo(new PlanPolicy(new FrameLimit.Unlimited(), new Retention.Unlimited()));
     }
 
     @Test
