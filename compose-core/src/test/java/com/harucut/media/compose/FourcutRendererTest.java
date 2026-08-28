@@ -171,32 +171,24 @@ class FourcutRendererTest {
     }
 
     @Nested
-    @DisplayName("셀 누끼 비네트 — 최상단 후처리")
+    @DisplayName("셀 누끼 — 서버는 아무것도 그리지 않는다")
     class CellCutouts {
 
+        // 누끼는 프론트가 원본 픽셀에 구워서 올린다. 서버가 뭔가를 덧그리면
+        // (과거의 가짜 비네트·녹색 링) 누끼 딴 사진 위에 장식이 겹친다 — 그 회귀를 여기서 막는다.
+        // 옛 스냅샷에는 cellCutouts=true인 Job이 남아 있으므로 "무시"가 계약이다
         @Test
-        @DisplayName("켠 칸은 중앙이 밝고 가장자리로 갈수록 어두워진다")
-        void vignetteDarkensEdges() {
-            BufferedImage result = decode(render(cutoutSpec(),
-                    List.of(solidPng(10, 10, WHITE)), Map.of()));
-
-            assertCloseTo(pixel(result, 100, 100), WHITE, 5);
-            assertThat(pixel(result, 40, 40).getRed()).isLessThan(200);
-        }
-
-        @Test
-        @DisplayName("켠 칸의 테두리에 녹색 링이 그려진다")
-        void greenRingOnSlotBorder() {
-            BufferedImage result = decode(render(cutoutSpec(),
-                    List.of(solidPng(10, 10, WHITE)), Map.of()));
-
-            assertCloseTo(pixel(result, 100, 20), new Color(0x1E, 0xD7, 0x60), 40);
-        }
-
-        // 200x200 캔버스에 160x160 슬롯 하나, 누끼 켬
-        private ComposeSpec cutoutSpec() {
-            return new ComposeSpec(200, 200, whiteBackground(),
+        @DisplayName("cellCutouts가 켜져 있어도 사진이 그대로다 — 비네트도 링도 없다")
+        void cutoutFlagDrawsNothing() {
+            ComposeSpec spec = new ComposeSpec(200, 200, whiteBackground(),
                     List.of(new Slot(20, 20, 160, 160)), List.of(true), List.of());
+
+            BufferedImage result = decode(render(spec,
+                    List.of(solidPng(10, 10, RED)), Map.of()));
+
+            assertThat(pixel(result, 100, 100)).isEqualTo(RED);   // 중앙
+            assertThat(pixel(result, 25, 25)).isEqualTo(RED);     // 모서리 — 비네트가 어둡히던 자리
+            assertThat(pixel(result, 100, 22)).isEqualTo(RED);    // 테두리 — 녹색 링이 있던 자리
         }
     }
 

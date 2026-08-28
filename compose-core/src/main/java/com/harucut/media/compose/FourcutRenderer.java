@@ -9,19 +9,13 @@ import javax.imageio.ImageWriteParam;
 import javax.imageio.ImageWriter;
 import javax.imageio.stream.ImageOutputStream;
 import java.awt.AlphaComposite;
-import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Composite;
 import java.awt.Graphics2D;
-import java.awt.Paint;
 import java.awt.RenderingHints;
 import java.awt.Shape;
-import java.awt.Stroke;
-import java.awt.RadialGradientPaint;
 import java.awt.geom.AffineTransform;
-import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
-import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -44,16 +38,6 @@ public class FourcutRenderer {
 
     // 프론트 DEFAULT_FRAME_BACKGROUND_COLOR — IMAGE 배경 아래에 깔리는 기본색
     private static final Color IMAGE_BACKGROUND_BASE = new Color(0x23, 0x26, 0x2D);
-
-    // 셀 누끼 비네트 상수 — 프론트 drawCellCutouts와 동일
-    private static final double VIGNETTE_RADIUS_RATIO = 0.62;
-    private static final float VIGNETTE_INNER_STOP = 0.6f;
-    private static final Color VIGNETTE_CENTER = new Color(0, 0, 0, 0);
-    private static final Color VIGNETTE_EDGE = new Color(11, 11, 12, Math.round(0.82f * 255));
-    // 프론트 traceRoundedRect의 r=40 — 작은 슬롯에선 변 절반까지로 클램프된다
-    private static final double CUTOUT_CORNER_RADIUS = 40;
-    private static final float CUTOUT_RING_WIDTH = 10f;
-    private static final Color CUTOUT_RING = new Color(0x1E, 0xD7, 0x60);
 
     // 썸네일 규격 — 긴 변 512, JPEG 품질 0.8 (사진 위주라 PNG 축소본은 여전히 크다)
     private static final int THUMBNAIL_LONG_EDGE = 512;
@@ -100,7 +84,6 @@ public class FourcutRenderer {
             drawBackground(g, spec, assets);
             drawSourcePhotos(g, spec, sourcePhotos);
             drawLayers(g, spec, assets);
-            drawCellCutouts(g, spec);
         } finally {
             g.dispose();
         }
@@ -168,41 +151,10 @@ public class FourcutRenderer {
         }
     }
 
-    // ── 그리기 순서 4: 셀 누끼 비네트 — 레이어 위 (최상단 후처리) ──────────────────────
-
-    private void drawCellCutouts(Graphics2D g, ComposeSpec spec) {
-        List<FrameLayout.Slot> slots = spec.slots();
-        List<Boolean> cutouts = spec.cellCutouts();
-        for (int i = 0; i < slots.size(); i++) {
-            if (i >= cutouts.size() || !cutouts.get(i)) {
-                continue;
-            }
-            FrameLayout.Slot slot = slots.get(i);
-            // 캔버스 roundRect(r)의 Java2D 대응은 호(arc) 지름 2r. r은 프론트처럼 변 절반까지만
-            double cornerRadius = Math.min(CUTOUT_CORNER_RADIUS,
-                    Math.min(slot.width(), slot.height()) / 2.0);
-            Shape rounded = new RoundRectangle2D.Double(
-                    slot.x(), slot.y(), slot.width(), slot.height(),
-                    cornerRadius * 2, cornerRadius * 2);
-            double radius = Math.min(slot.width(), slot.height()) * VIGNETTE_RADIUS_RATIO;
-            Point2D center = new Point2D.Double(
-                    slot.x() + slot.width() / 2.0, slot.y() + slot.height() / 2.0);
-
-            // 중심 0.6r까지 투명, r에서 어두움. r 밖은 마지막 색 유지 — 캔버스 그라디언트와 같은 동작
-            Paint oldPaint = g.getPaint();
-            g.setPaint(new RadialGradientPaint(center, (float) radius,
-                    new float[]{VIGNETTE_INNER_STOP, 1f},
-                    new Color[]{VIGNETTE_CENTER, VIGNETTE_EDGE}));
-            g.fill(rounded);
-            g.setPaint(oldPaint);
-
-            Stroke oldStroke = g.getStroke();
-            g.setStroke(new BasicStroke(CUTOUT_RING_WIDTH));
-            g.setColor(CUTOUT_RING);
-            g.draw(rounded);
-            g.setStroke(oldStroke);
-        }
-    }
+    // 셀 누끼는 서버가 그리지 않는다 — 프론트가 배경을 제거하고 검은 배경까지 픽셀에
+    // 구워서 업로드한다 (필터와 같은 계약). cellCutouts 플래그는 "프론트가 누끼를 딸 셀"
+    // 이라는 표시로 스펙에 남지만, 렌더러는 읽지 않는다.
+    // 이전의 가짜 비네트(방사형 그라디언트 + 녹색 링) 구현은 git 이력에 있다
 
     // ── 공통 도구 ──────────────────────
 

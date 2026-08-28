@@ -11,7 +11,9 @@ import java.util.Set;
 // 합성 한 건의 자기 완결적 렌더 스펙 — 요청 시점의 프레임에서 파생해 Job에 스냅샷으로 저장한다.
 // 프레임이 나중에 수정·삭제돼도 재실행은 이 스냅샷만 보므로, 사용자가 요청할 때 본 그대로 그려진다.
 // 그리기 순서 계약(프론트 drawFrameOnce와 동일): 배경(색→이미지) → 원본 4장(슬롯, cover)
-// → 레이어(zIndex 오름차순) → 셀 누끼 비네트
+// → 레이어(zIndex 오름차순).
+// cellCutouts는 서버가 그리는 대상이 아니다 — 누끼는 프론트가 원본에 구워서 올리고,
+// 이 플래그는 "프론트가 누끼를 딸 셀"이라는 표시로만 스냅샷에 남는다
 public record ComposeSpec(
         int canvasWidth,
         int canvasHeight,
