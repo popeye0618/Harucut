@@ -1,0 +1,95 @@
+# 하루컷 백엔드 — 운영 서버(EC2)용
+#
+#   docker compose up -d          # 이 폴더에서. .env 를 자동으로 읽는다
+#
+# 서버에는 이 파일과 .env 두 개만 있으면 된다. 앱은 CI 가 GHCR 에 올린 이미지를 받아온다 —
+# 서버(908MB)에서 Gradle 을 돌리면 메모리가 모자라고, 테스트를 통과한 그 이미지가 배포된다는 보장도 사라진다.
+#
+# 메모리 배분 (서버 908MB + 스왑 4GB):
+#   app ~600MB / mysql ~350MB / redis ~100MB — 합이 실메모리를 넘지만 상한이지 상시 사용량이 아니다.
+#   넘치는 순간은 스왑이 받는다. 스왑을 상시 쓰기 시작하면 인스턴스를 키울 때다.
+name: harucut
+
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      TZ: Asia/Seoul
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      # 기본 128MB 지만 명시한다 — 누가 "성능 올리자"며 키우면 이 서버에선 바로 OOM 이다
+      - --innodb-buffer-pool-size=128M
+      # 켜두면 이것만으로 수백 MB 를 먹는다. Kotlin 서버의 MySQL 이 죽은 원인 후보
+      - --performance-schema=OFF
+    volumes:
+      - mysql-data:/var/lib/mysql
+    # 호스트의 127.0.0.1 에만 연다 — 보안 그룹과 별개로 바깥에선 아예 안 보인다.
+    # 노트북에서 붙고 싶으면 SSH 터널: ssh -L 3306:127.0.0.1:3306 ubuntu@서버
+    ports:
+      - "127.0.0.1:3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      # 메모리가 빠듯해 첫 기동이 느리다. 이 시간 동안의 실패는 unhealthy 로 세지 않는다
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 350m
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # maxmemory 를 넘으면 쓰기가 실패한다(기본 정책 noeviction).
+    # 지우는 정책(allkeys-lru 등)을 쓰면 refresh 토큰이 조용히 사라져 사용자가 로그아웃된다 — 실패가 낫다
+    command: ["redis-server", "--maxmemory", "64mb"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 100m
+
+  app:
+    image: ${APP_IMAGE:-ghcr.io/popeye0618/harucut}:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      # .env 와 겹치면 이쪽이 이긴다. 컨테이너끼리는 서비스명으로 찾는다 (localhost 아님)
+      DB_URL: "jdbc:mysql://mysql:3306/${MYSQL_DATABASE}?characterEncoding=UTF-8&serverTimezone=Asia/Seoul"
+      REDIS_HOST: redis
+      # 힙을 컨테이너 상한의 비율로 준다 — 상한을 바꾸면 힙도 따라온다.
+      # 60% 인 이유: 나머지 40% 는 메타스페이스·스레드 스택·다이렉트 버퍼 몫이다
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=60"
+    # nginx 가 같은 호스트에서 localhost:8080 으로 넘긴다. 바깥에는 nginx(443)만 보인다
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # SQS 롱폴링(최대 20초)을 끝내고 내려갈 시간 — ComposeResultConsumer 참고
+    stop_grace_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 600m
+
+volumes:
+  mysql-data:

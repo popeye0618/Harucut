@@ -1,0 +1,25 @@
+spring:
+  datasource:
+    # 기본값을 두지 않는다 — 빠지면 localhost 로 조용히 붙으려다 엉뚱한 오류를 내느니 기동에서 죽는 게 낫다
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+  jpa:
+    hibernate:
+      # 운영 전이라 Flyway 대신 update 로 간다. 실데이터가 생기면 마이그레이션 도구로 바꿀 것
+      ddl-auto: update
+    open-in-view: false
+    show-sql: false
+
+management:
+  health:
+    mail:
+      # 배포 스크립트가 /actuator/health 로 기동을 확인한다(deploy.yml).
+      # 메일 체크를 켜두면 Gmail SMTP 가 느리거나 막힐 때 멀쩡한 배포가 실패로 찍힌다.
+      # DB·Redis 체크는 남긴다 — 그 둘이 안 붙으면 정말로 못 쓰는 서버다
+      enabled: false
+
+server:
+  # nginx 가 HTTPS 를 풀고 http 로 넘긴다. X-Forwarded-* 를 믿지 않으면
+  # 스프링이 자기를 http://localhost:8080 으로 알고, OAuth2 redirect-uri({baseUrl})가 틀어진다
+  forward-headers-strategy: native
