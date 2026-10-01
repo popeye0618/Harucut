@@ -1,0 +1,119 @@
+# main 에 머지되면: 이미지 빌드 → GHCR push → EC2 에서 pull & 재기동.
+# 테스트는 여기서 돌리지 않는다 — PR 단계(ci.yml)에서 끝났다. 전제 조건은 ci.yml 머리말 참고.
+#
+# 필요한 Secrets (Settings → Secrets and variables → Actions):
+#   EC2_HOST     서버 IP 또는 도메인
+#   EC2_USER     ubuntu
+#   EC2_SSH_KEY  pem 파일 내용 전체
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+# 배포는 겹치면 안 된다. 진행 중인 배포를 취소하지 않고 줄을 세운다 —
+# 중간에 끊으면 서버가 "이미지는 받았는데 재기동은 안 한" 상태로 남는다
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+env:
+  # GHCR 이미지 이름은 소문자만 된다. github.repository 는 popeye0618/Harucut 이라 그대로 못 쓴다
+  IMAGE: ghcr.io/popeye0618/harucut
+
+jobs:
+  build:
+    name: build & push
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write   # GHCR push. GITHUB_TOKEN 으로 되므로 별도 Secret 이 없다
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 태그 둘: 커밋 SHA(불변 — 서버는 이걸로 받는다, 롤백도 이걸로) + latest(사람이 보기용).
+      # 서버가 x86_64 한 대라 amd64 만 빌드한다. 멀티아치는 빌드 시간만 늘린다.
+      # Gradle 빌드는 Dockerfile 안에서 돈다 — 레이어 캐시(gha)가 의존성 다운로드를 건너뛰게 해준다
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: deploy to EC2
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v5
+
+      # compose.yml 의 원본은 저장소다. 서버에서 손으로 고친 건 다음 배포 때 덮인다.
+      # .env 는 보내지 않는다 — 시크릿은 서버에만 있다
+      - name: Copy compose.yml
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: deploy/prod/compose.yml
+          target: /home/ubuntu/harucut
+          strip_components: 2
+
+      - name: Pull & restart
+        uses: appleboy/ssh-action@v1
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: IMAGE_TAG,GHCR_USER,GHCR_TOKEN
+          script: |
+            set -euo pipefail
+            cd /home/ubuntu/harucut
+
+            # 패키지가 private 이라 로그인이 필요하다. 이 토큰은 이 실행이 끝나면 죽는다
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+
+            # 어느 버전이 떠 있는지는 .env 의 IMAGE_TAG 가 말해준다.
+            # 롤백: 이 값을 이전 SHA 로 되돌리고 docker compose up -d
+            sed -i "s|^IMAGE_TAG=.*|IMAGE_TAG=${IMAGE_TAG}|" .env
+
+            docker compose pull app
+            docker compose up -d
+            docker logout ghcr.io
+
+            # 컨테이너가 떴다 ≠ 앱이 떴다. 기동 중 죽으면(환경변수 누락·DB 접속 실패) 여기서 잡는다.
+            # 서버 메모리가 빠듯해 기동이 느리다 — 3분까지 기다린다.
+            # 관리 포트(8081)는 호스트로 열지 않았으므로 컨테이너 안에서 찌른다.
+            # API 경로로 확인하지 않는 이유: Swagger 를 끄거나 경로가 바뀌면 멀쩡한 배포가 실패로 찍힌다
+            for i in $(seq 1 36); do
+              if docker compose exec -T app wget -q -O /dev/null http://127.0.0.1:8081/actuator/health; then
+                echo "앱 기동 확인 (${i}번째 시도)"
+                docker image prune -af
+                exit 0
+              fi
+              sleep 5
+            done
+
+            echo "앱이 3분 안에 뜨지 않았다" >&2
+            docker compose logs --tail 80 app
+            exit 1

@@ -40,7 +40,6 @@ out/
 .DS_Store
 
 photo/
-deploy/
 .env
 
 # monitoring·docs 는 저장소에 포함한다 — ADR·측정 결과·대시보드가 설계 근거 그 자체다.
