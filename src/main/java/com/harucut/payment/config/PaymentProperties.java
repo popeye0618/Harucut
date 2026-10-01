@@ -16,7 +16,8 @@ public record PaymentProperties(
     }
 
     public record Mock(
-            @DefaultValue("false") boolean failCharge
+            @DefaultValue("false") boolean failCharge,
+            @DefaultValue("false") boolean allowedOutsideLocal
     ){
     }
 }

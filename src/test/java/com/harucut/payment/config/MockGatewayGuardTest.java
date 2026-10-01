@@ -7,7 +7,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.boot.context.properties.bind.Binder;
+import org.springframework.boot.context.properties.source.MapConfigurationPropertySource;
 
+import java.util.Map;
+
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
@@ -28,8 +33,17 @@ class MockGatewayGuardTest {
     void rejectsMockGateway() {
         given(paymentGateway.provider()).willReturn(PgProvider.MOCK);
 
-        assertThatThrownBy(() -> new MockGatewayGuard(paymentGateway))
+        assertThatThrownBy(() -> new MockGatewayGuard(paymentGateway, properties(false)))
                 .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    @DisplayName("mock이어도 명시적으로 허용했으면 통과한다")
+    void allowsMockGatewayWhenOptedIn() {
+        given(paymentGateway.provider()).willReturn(PgProvider.MOCK);
+
+        assertThatCode(() -> new MockGatewayGuard(paymentGateway, properties(true)))
+                .doesNotThrowAnyException();
     }
 
     @Test
@@ -37,7 +51,25 @@ class MockGatewayGuardTest {
     void allowsRealGateway() {
         given(paymentGateway.provider()).willReturn(PgProvider.TOSS);
 
-        assertThatCode(() -> new MockGatewayGuard(paymentGateway))
+        assertThatCode(() -> new MockGatewayGuard(paymentGateway, properties(false)))
                 .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("허용 설정은 아무것도 안 주면 꺼져 있다")
+    void optInDefaultsToFalse() {
+        // 이 기본값이 true 가 되면 가드가 조용히 꺼진다. 설정을 하나도 안 준 상태로 바인딩해 확인한다
+        PaymentProperties bound = new Binder(new MapConfigurationPropertySource(Map.of()))
+                .bindOrCreate("payment", PaymentProperties.class);
+
+        assertThat(bound.mock().allowedOutsideLocal()).isFalse();
+    }
+
+    private PaymentProperties properties(boolean allowedOutsideLocal) {
+        return new PaymentProperties(
+                new PaymentProperties.Gateway("mock"),
+                new PaymentProperties.Mock(false, allowedOutsideLocal),
+                3
+        );
     }
 }
